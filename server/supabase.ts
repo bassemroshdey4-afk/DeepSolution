@@ -176,6 +176,7 @@ export interface Database {
           id: string;
           tenant_id: string;
           event_name: string | null;
+          event_type: string;
           store_id: string | null;
           session_id: string | null;
           user_id: string | null;

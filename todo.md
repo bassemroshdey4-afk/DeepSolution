@@ -101,10 +101,10 @@
 - [x] Auto-redirect to dashboard after onboarding
 
 ### Events Ingestion API
-- [ ] Create tRPC procedure for event ingestion
-- [ ] Support all tracking fields (UTM, ad platform, etc.)
-- [ ] Validate tenant_id and event_name
-- [ ] Return success/error response
+- [x] Create tRPC procedure for event ingestion
+- [x] Support all tracking fields (UTM, ad platform, etc.)
+- [x] Validate tenant_id and event_name
+- [x] Return success/error response
 
 ### Arabic RTL Dashboard (Supabase-connected)
 - [x] Connect dashboard to Supabase for real data
@@ -151,9 +151,9 @@
 - [x] إنشاء APIs لـ webhook_events
 
 ### Settings Page
-- [ ] إنشاء صفحة Settings في لوحة التاجر
-- [ ] واجهة إدارة طرق الدفع
-- [ ] تفعيل/تعطيل كل طريقة دفع
+- [x] إنشاء صفحة Settings في لوحة التاجر
+- [x] واجهة إدارة طرق الدفع
+- [x] تفعيل/تعطيل كل طريقة دفع
 
 
 ## Super Admin Module

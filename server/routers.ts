@@ -427,6 +427,7 @@ export const appRouter = router({
       .input(
         z.object({
           event_name: z.string().min(1, "اسم الحدث مطلوب"),
+          event_type: z.enum(["page_view", "click", "purchase", "add_to_cart", "form_submit", "custom"]).default("custom"),
           store_id: z.string().uuid().optional(),
           session_id: z.string().optional(),
           user_id: z.string().uuid().optional(),
@@ -449,6 +450,7 @@ export const appRouter = router({
         await db.trackEvent({
           tenant_id: ctx.tenantId,
           event_name: input.event_name || null,
+          event_type: input.event_type,
           store_id: input.store_id || null,
           session_id: input.session_id || null,
           user_id: input.user_id || null,
