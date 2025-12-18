@@ -16,6 +16,7 @@ import Campaigns from "./pages/Campaigns";
 import LandingPages from "./pages/LandingPages";
 import AIAssistant from "./pages/AIAssistant";
 import PaymentSettings from "./pages/PaymentSettings";
+import SuperAdmin from "./pages/SuperAdmin";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -71,6 +72,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/onboarding" component={TenantOnboarding} />
+      <Route path="/admin" component={SuperAdmin} />
       <Route path="/">{() => <ProtectedRoute component={Dashboard} />}</Route>
       <Route path="/products">{() => <ProtectedRoute component={Products} />}</Route>
       <Route path="/orders">{() => <ProtectedRoute component={Orders} />}</Route>

@@ -154,3 +154,15 @@
 - [ ] إنشاء صفحة Settings في لوحة التاجر
 - [ ] واجهة إدارة طرق الدفع
 - [ ] تفعيل/تعطيل كل طريقة دفع
+
+
+## Super Admin Module
+- [x] إنشاء دور SuperAdmin على مستوى المنصة
+- [x] إنشاء superAdminProcedure في tRPC
+- [x] إنشاء superAdmin router مع APIs
+- [x] API: عرض جميع المستأجرين
+- [x] API: تفعيل/تعليق الحسابات
+- [x] API: تغيير خطط الاشتراك
+- [x] API: تعيين حدود استخدام AI
+- [x] إنشاء صفحة /admin بسيطة
+- [x] حفظ checkpoint
