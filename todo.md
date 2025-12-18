@@ -13,6 +13,11 @@
 - [x] إعداد تدفق المصادقة مع ربط المستخدمين بالمستأجرين
 - [x] إضافة middleware للتحقق من tenant_id في جميع الطلبات
 - [x] إنشاء دوال مساعدة في db.ts لعزل البيانات
+- [x] إصلاح مشكلة التحميل اللانهائي في ProtectedRoute
+- [x] إصلاح دالة getUserTenants للعمل بدون foreign key joins
+- [x] إصلاح دالة getUserByOpenId لاستخدام profile.id بشكل صحيح
+- [x] إصلاح قيمة status في startTenantTrial (trial بدلاً من trialing)
+- [x] إضافة التحقق من حالة onboarding في TenantOnboarding page
 
 ## المرحلة 3: الواجهة الأمامية الأساسية
 - [x] إعداد دعم RTL للعربية في index.css
@@ -65,7 +70,10 @@
 - [ ] ربط الطلبات بحالات الشحن
 
 ## المرحلة 9: الاختبار والتوثيق
-- [ ] كتابة اختبارات Vitest لجميع tRPC procedures
+- [x] كتابة اختبارات Vitest لـ tenant management
+- [x] اختبار إنشاء tenant جديد عبر onboarding
+- [x] اختبار رفض النطاقات المكررة
+- [x] اختبار حالة onboarding
 - [ ] اختبار عزل البيانات بين المستأجرين
 - [ ] اختبار تدفقات المستخدم الكاملة
 - [ ] إنشاء توثيق شامل للمطورين
@@ -79,3 +87,70 @@
 - [ ] مراجعة الأمان وعزل البيانات
 - [ ] إنشاء checkpoint نهائي
 - [ ] إعداد المشروع للنشر
+
+
+## Phase 2: Platform Core Enablement (Supabase Integration)
+
+### Onboarding Flow
+- [x] Create Supabase client configuration
+- [x] Create onboarding page with tenant creation form
+- [x] Add localization selection (country, currency, language, timezone)
+- [x] Integrate with start_tenant_trial() function
+- [x] Link user to tenant via tenant_users
+- [x] Update profile default_tenant_id
+- [x] Auto-redirect to dashboard after onboarding
+
+### Events Ingestion API
+- [ ] Create tRPC procedure for event ingestion
+- [ ] Support all tracking fields (UTM, ad platform, etc.)
+- [ ] Validate tenant_id and event_name
+- [ ] Return success/error response
+
+### Arabic RTL Dashboard (Supabase-connected)
+- [x] Connect dashboard to Supabase for real data
+- [x] Display tenant info from Supabase
+- [ ] Show trial status and limits
+- [ ] Display real orders/campaigns/products counts
+
+### AI Read-only Insights
+- [ ] Wire AI context retrieval from Supabase
+- [ ] Display tenant insights on dashboard
+- [ ] Show recommendations based on data
+
+### Supabase Integration Completed
+- [x] Database schema (48 tables)
+- [x] RLS policies (180 policies)
+- [x] Trial enforcement trigger
+- [x] Helper functions (7 functions)
+- [x] Boss Commerce tenant seed
+- [x] Events tracking columns (17 columns)
+- [x] Performance indexes
+
+
+## Phase Auth + Payments Prep
+
+### Manus OAuth Integration
+- [x] تكامل Manus OAuth (Google, Microsoft, Apple)
+- [x] إصلاح مشاكل foreign key constraints
+- [x] إنشاء profiles بـ UUID مستقل
+
+### RBAC Auto-linking
+- [x] تحديث OAuth callback لـ upsert في profiles
+- [x] ربط المستخدم تلقائياً في tenant_users كـ Owner بعد onboarding
+
+### Payment Schema
+- [x] إنشاء جدول payment_methods
+- [x] إنشاء جدول payment_transactions
+- [x] إنشاء جدول payment_proofs (Vodafone Cash manual)
+- [x] إنشاء جدول webhook_events
+
+### Payment APIs Stubs
+- [x] إنشاء CRUD APIs لـ payment_methods
+- [x] إنشاء APIs لـ payment_transactions
+- [x] إنشاء APIs لـ payment_proofs
+- [x] إنشاء APIs لـ webhook_events
+
+### Settings Page
+- [ ] إنشاء صفحة Settings في لوحة التاجر
+- [ ] واجهة إدارة طرق الدفع
+- [ ] تفعيل/تعطيل كل طريقة دفع

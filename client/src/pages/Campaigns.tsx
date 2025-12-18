@@ -59,11 +59,11 @@ export default function Campaigns() {
   });
 
   const calculateROASMutation = trpc.campaigns.calculateROAS.useMutation({
-    onSuccess: (data) => {
+    onSuccess: (data: { roas: number }) => {
       toast.success(`تم حساب ROAS: ${data.roas}%`);
       utils.campaigns.list.invalidate();
     },
-    onError: (error) => {
+    onError: (error: { message?: string }) => {
       toast.error(error.message || "حدث خطأ أثناء حساب ROAS");
     },
   });
@@ -75,7 +75,7 @@ export default function Campaigns() {
       description: formData.description || undefined,
       platform: formData.platform,
       budget: Math.round(parseFloat(formData.budget) * 100),
-      startDate: new Date(formData.startDate),
+      start_date: formData.startDate || undefined,
     });
   };
 
@@ -202,7 +202,7 @@ export default function Campaigns() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <CardTitle className="text-lg mb-2">{campaign.name}</CardTitle>
-                    <Badge variant="outline">{platformLabels[campaign.platform]}</Badge>
+                    <Badge variant="outline">{platformLabels[campaign.platform as keyof typeof platformLabels] || campaign.platform}</Badge>
                   </div>
                   <Badge variant={campaign.status === "active" ? "default" : "secondary"}>
                     {campaign.status === "active" ? "نشطة" : campaign.status === "paused" ? "متوقفة" : "مكتملة"}

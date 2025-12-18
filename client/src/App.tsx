@@ -15,14 +15,19 @@ import Orders from "./pages/Orders";
 import Campaigns from "./pages/Campaigns";
 import LandingPages from "./pages/LandingPages";
 import AIAssistant from "./pages/AIAssistant";
+import PaymentSettings from "./pages/PaymentSettings";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
-  const { data: tenant, isLoading: tenantLoading } = trpc.tenant.getCurrent.useQuery(undefined, {
+  
+  // استخدام onboarding.getStatus بدلاً من tenant.getCurrent
+  // لأنه يعمل مع protectedProcedure وليس tenantProcedure
+  const { data: onboardingStatus, isLoading: statusLoading, error } = trpc.onboarding.getStatus.useQuery(undefined, {
     enabled: !!user,
+    retry: false, // لا نعيد المحاولة إذا فشل
   });
 
-  if (loading || tenantLoading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -33,11 +38,25 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     );
   }
 
+  // إذا لم يكن مسجل دخول، توجيه للـ onboarding
   if (!user) {
     return <Redirect to="/onboarding" />;
   }
 
-  if (!tenant && !tenantLoading) {
+  // إذا كان يتم تحميل حالة الـ onboarding
+  if (statusLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">جاري التحقق من الحساب...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // إذا حدث خطأ أو لم يكمل الـ onboarding
+  if (error || !onboardingStatus?.hasCompletedOnboarding) {
     return <Redirect to="/onboarding" />;
   }
 
@@ -58,6 +77,7 @@ function Router() {
       <Route path="/campaigns">{() => <ProtectedRoute component={Campaigns} />}</Route>
       <Route path="/landing-pages">{() => <ProtectedRoute component={LandingPages} />}</Route>
       <Route path="/ai-assistant">{() => <ProtectedRoute component={AIAssistant} />}</Route>
+      <Route path="/settings/payments">{() => <ProtectedRoute component={PaymentSettings} />}</Route>
       <Route>
         <Redirect to="/" />
       </Route>

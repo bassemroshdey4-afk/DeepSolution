@@ -73,7 +73,7 @@ export default function Products() {
     });
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = (id: string) => {
     if (confirm("هل أنت متأكد من حذف هذا المنتج؟")) {
       deleteProductMutation.mutate({ id });
     }

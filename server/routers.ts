@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import * as db from "./db";
+import { invokeLLM } from "./_core/llm";
 
 // Middleware للتحقق من وجود tenant_id
 const tenantProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -17,13 +18,10 @@ const tenantProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({
     ctx: {
       ...ctx,
-      tenantId: ctx.user.tenantId,
+      tenantId: ctx.user.tenantId as string,
     },
   });
 });
-
-import { invokeLLM } from "./_core/llm";
-import { storagePut } from "./storage";
 
 export const appRouter = router({
   system: systemRouter,
@@ -37,22 +35,25 @@ export const appRouter = router({
     }),
   }),
 
-  // إدارة المستأجرين
-  tenant: router({
-    // إنشاء مستأجر جديد (متاح للمستخدمين المصادقين فقط)
-    create: protectedProcedure
+  // Onboarding - إنشاء مستأجر جديد مع Trial
+  onboarding: router({
+    createTenant: protectedProcedure
       .input(
         z.object({
           name: z.string().min(2, "يجب أن يكون الاسم حرفين على الأقل"),
-          domain: z
+          slug: z
             .string()
             .min(3, "يجب أن يكون النطاق 3 أحرف على الأقل")
-            .regex(/^[a-z0-9-]+$/, "يجب أن يحتوي النطاق على أحرف إنجليزية صغيرة وأرقام وشرطات فقط"),
+            .regex(/^[a-z0-9-]+$/, "أحرف إنجليزية صغيرة وأرقام وشرطات فقط"),
+          country: z.string().optional(),
+          currency: z.string().optional(),
+          language: z.string().optional(),
+          timezone: z.string().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
-        // التحقق من عدم وجود مستأجر بنفس النطاق
-        const existing = await db.getTenantByDomain(input.domain);
+        // التحقق من عدم وجود مستأجر بنفس الـ slug
+        const existing = await db.getTenantBySlug(input.slug);
         if (existing) {
           throw new TRPCError({
             code: "CONFLICT",
@@ -63,21 +64,47 @@ export const appRouter = router({
         // إنشاء المستأجر
         const tenantId = await db.createTenant({
           name: input.name,
-          domain: input.domain,
-          plan: "free",
-          status: "trial",
+          slug: input.slug,
+          country: input.country,
+          currency: input.currency,
+          language: input.language,
+          timezone: input.timezone,
         });
 
-        // ربط المستخدم الحالي بالمستأجر كـ owner
-        await db.updateUserTenant(ctx.user.id, tenantId);
+        // ربط المستخدم بالمستأجر كـ owner
+        await db.addUserToTenant(tenantId, ctx.user.id, "owner");
+
+        // تحديث الـ profile
+        await db.updateProfile(ctx.user.id, { default_tenant_id: tenantId });
+
+        // بدء الـ Trial
+        await db.startTenantTrial(tenantId);
 
         return {
           tenantId,
-          message: "تم إنشاء الحساب بنجاح",
+          message: "تم إنشاء الحساب بنجاح مع فترة تجريبية 7 أيام",
         };
       }),
 
-    // الحصول على معلومات المستأجر الحالي
+    // الحصول على حالة الـ Onboarding
+    getStatus: protectedProcedure.query(async ({ ctx }) => {
+      const tenants = await db.getUserTenants(ctx.user.id);
+      const hasCompletedOnboarding = tenants.length > 0;
+
+      return {
+        hasCompletedOnboarding,
+        tenantsCount: tenants.length,
+        tenants: tenants.map((t) => ({
+          id: t.tenant_id,
+          role: t.role,
+          tenant: t.tenants,
+        })),
+      };
+    }),
+  }),
+
+  // إدارة المستأجرين
+  tenant: router({
     getCurrent: tenantProcedure.query(async ({ ctx }) => {
       const tenant = await db.getTenantById(ctx.tenantId);
       if (!tenant) {
@@ -89,27 +116,28 @@ export const appRouter = router({
       return tenant;
     }),
 
-    // تحديث إعدادات المستأجر
     updateSettings: tenantProcedure
       .input(
         z.object({
-          settings: z.object({
-            currency: z.string().optional(),
-            timezone: z.string().optional(),
-            language: z.string().optional(),
-          }),
+          country: z.string().optional(),
+          currency: z.string().optional(),
+          language: z.string().optional(),
+          timezone: z.string().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
-        await db.updateTenant(ctx.tenantId, {
-          settings: input.settings,
-        });
+        await db.updateTenant(ctx.tenantId, input);
         return { success: true };
       }),
 
-    // الحصول على إحصائيات المستأجر
     getStats: tenantProcedure.query(async ({ ctx }) => {
       return db.getTenantStats(ctx.tenantId);
+    }),
+
+    getSubscription: tenantProcedure.query(async ({ ctx }) => {
+      const subscription = await db.getTenantSubscription(ctx.tenantId);
+      const isTrialActive = await db.isTrialActive(ctx.tenantId);
+      return { subscription, isTrialActive };
     }),
   }),
 
@@ -120,7 +148,7 @@ export const appRouter = router({
     }),
 
     get: tenantProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
         const product = await db.getProductById(input.id, ctx.tenantId);
         if (!product) {
@@ -141,15 +169,23 @@ export const appRouter = router({
           cost: z.number().min(0).optional(),
           sku: z.string().optional(),
           barcode: z.string().optional(),
-          imageUrl: z.string().optional(),
+          image_url: z.string().optional(),
           stock: z.number().min(0).default(0),
           status: z.enum(["active", "draft", "archived"]).default("active"),
         })
       )
       .mutation(async ({ ctx, input }) => {
         const productId = await db.createProduct({
-          ...input,
-          tenantId: ctx.tenantId,
+          tenant_id: ctx.tenantId,
+          name: input.name,
+          description: input.description || null,
+          price: input.price,
+          cost: input.cost || null,
+          sku: input.sku || null,
+          barcode: input.barcode || null,
+          image_url: input.image_url || null,
+          stock: input.stock,
+          status: input.status,
         });
         return { productId };
       }),
@@ -157,14 +193,14 @@ export const appRouter = router({
     update: tenantProcedure
       .input(
         z.object({
-          id: z.number(),
+          id: z.string().uuid(),
           name: z.string().min(1).optional(),
           description: z.string().optional(),
           price: z.number().min(0).optional(),
           cost: z.number().min(0).optional(),
           sku: z.string().optional(),
           barcode: z.string().optional(),
-          imageUrl: z.string().optional(),
+          image_url: z.string().optional(),
           stock: z.number().min(0).optional(),
           status: z.enum(["active", "draft", "archived"]).optional(),
         })
@@ -176,7 +212,7 @@ export const appRouter = router({
       }),
 
     delete: tenantProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.string().uuid() }))
       .mutation(async ({ ctx, input }) => {
         await db.deleteProduct(input.id, ctx.tenantId);
         return { success: true };
@@ -198,7 +234,7 @@ export const appRouter = router({
       }),
 
     get: tenantProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
         const order = await db.getOrderWithItems(input.id, ctx.tenantId);
         if (!order) {
@@ -213,18 +249,20 @@ export const appRouter = router({
     create: tenantProcedure
       .input(
         z.object({
-          orderNumber: z.string(),
-          customerName: z.string().min(1, "اسم العميل مطلوب"),
-          customerPhone: z.string().min(1, "رقم الهاتف مطلوب"),
-          customerAddress: z.string().optional(),
+          order_number: z.string(),
+          customer_name: z.string().min(1, "اسم العميل مطلوب"),
+          customer_phone: z.string().min(1, "رقم الهاتف مطلوب"),
+          customer_email: z.string().email().optional(),
+          customer_address: z.string().optional(),
           items: z.array(
             z.object({
-              productId: z.number(),
+              product_id: z.string().uuid().optional(),
+              product_name: z.string(),
               quantity: z.number().min(1),
-              price: z.number().min(0),
+              unit_price: z.number().min(0),
             })
           ),
-          campaignId: z.number().optional(),
+          campaign_id: z.string().uuid().optional(),
           notes: z.string().optional(),
         })
       )
@@ -232,21 +270,29 @@ export const appRouter = router({
         const { items, ...orderData } = input;
 
         // حساب المبلغ الإجمالي
-        const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        const total_amount = items.reduce(
+          (sum, item) => sum + item.unit_price * item.quantity,
+          0
+        );
 
         // إنشاء الطلب
         const orderId = await db.createOrder({
           ...orderData,
-          totalAmount,
-          tenantId: ctx.tenantId,
+          total_amount,
+          shipping_cost: 0,
+          discount_amount: 0,
+          status: "pending",
+          payment_status: "pending",
+          tenant_id: ctx.tenantId,
         });
 
         // إضافة عناصر الطلب
         for (const item of items) {
           await db.createOrderItem({
             ...item,
-            orderId,
-            tenantId: ctx.tenantId,
+            order_id: orderId,
+            total_price: item.unit_price * item.quantity,
+            tenant_id: ctx.tenantId,
           });
         }
 
@@ -256,8 +302,16 @@ export const appRouter = router({
     updateStatus: tenantProcedure
       .input(
         z.object({
-          id: z.number(),
-          status: z.enum(["new", "confirmed", "processing", "shipped", "delivered", "cancelled"]),
+          id: z.string().uuid(),
+          status: z.enum([
+            "pending",
+            "confirmed",
+            "processing",
+            "shipped",
+            "delivered",
+            "cancelled",
+            "returned",
+          ]),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -268,24 +322,14 @@ export const appRouter = router({
     updateCallCenterStatus: tenantProcedure
       .input(
         z.object({
-          id: z.number(),
-          callCenterStatus: z.enum(["pending", "contacted", "callback", "no_answer", "confirmed"]),
+          id: z.string().uuid(),
+          call_center_status: z.enum(["pending", "contacted", "confirmed", "cancelled"]),
         })
       )
       .mutation(async ({ ctx, input }) => {
-        await db.updateOrder(input.id, ctx.tenantId, { callCenterStatus: input.callCenterStatus });
-        return { success: true };
-      }),
-
-    updateShippingStatus: tenantProcedure
-      .input(
-        z.object({
-          id: z.number(),
-          shippingStatus: z.enum(["pending", "in_transit", "delivered", "returned"]),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        await db.updateOrder(input.id, ctx.tenantId, { shippingStatus: input.shippingStatus });
+        await db.updateOrder(input.id, ctx.tenantId, { 
+          call_center_status: input.call_center_status 
+        });
         return { success: true };
       }),
   }),
@@ -297,7 +341,7 @@ export const appRouter = router({
     }),
 
     get: tenantProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
         const campaign = await db.getCampaignById(input.id, ctx.tenantId);
         if (!campaign) {
@@ -314,16 +358,20 @@ export const appRouter = router({
         z.object({
           name: z.string().min(1, "اسم الحملة مطلوب"),
           description: z.string().optional(),
-          platform: z.enum(["facebook", "google", "tiktok", "snapchat", "instagram", "other"]),
+          platform: z.string(),
           budget: z.number().min(0, "الميزانية يجب أن تكون موجبة"),
-          startDate: z.date(),
-          endDate: z.date().optional(),
+          start_date: z.string().optional(),
+          end_date: z.string().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         const campaignId = await db.createCampaign({
           ...input,
-          tenantId: ctx.tenantId,
+          spent: 0,
+          revenue: 0,
+          orders_count: 0,
+          status: "draft",
+          tenant_id: ctx.tenantId,
         });
         return { campaignId };
       }),
@@ -331,13 +379,14 @@ export const appRouter = router({
     update: tenantProcedure
       .input(
         z.object({
-          id: z.number(),
+          id: z.string().uuid(),
           name: z.string().optional(),
           description: z.string().optional(),
+          platform: z.string().optional(),
           budget: z.number().min(0).optional(),
           spent: z.number().min(0).optional(),
-          status: z.enum(["active", "paused", "completed"]).optional(),
-          endDate: z.date().optional(),
+          revenue: z.number().min(0).optional(),
+          status: z.enum(["draft", "active", "paused", "completed"]).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -346,9 +395,15 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // حساب ROAS للحملة
+    delete: tenantProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteCampaign(input.id, ctx.tenantId);
+        return { success: true };
+      }),
+
     calculateROAS: tenantProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.string().uuid() }))
       .mutation(async ({ ctx, input }) => {
         const campaign = await db.getCampaignById(input.id, ctx.tenantId);
         if (!campaign) {
@@ -357,148 +412,71 @@ export const appRouter = router({
             message: "الحملة غير موجودة",
           });
         }
-
-        // الحصول على جميع الطلبات المرتبطة بالحملة
-        const orders = await db.getOrdersByCampaign(input.id, ctx.tenantId);
-
-        // حساب الإيرادات من الطلبات المكتملة
-        const revenue = orders
-          .filter((order) => order.status === "delivered")
-          .reduce((sum, order) => sum + order.totalAmount, 0);
-
-        // حساب ROAS (كنسبة مئوية)
-        const roas = campaign.spent > 0 ? Math.round((revenue / campaign.spent) * 100) : 0;
-
-        // تحديث الحملة
-        await db.updateCampaign(input.id, ctx.tenantId, {
-          revenue,
-          roas,
-        });
-
-        return {
-          revenue,
-          spent: campaign.spent,
-          roas,
-        };
-      }),
-
-    delete: tenantProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        await db.deleteCampaign(input.id, ctx.tenantId);
-        return { success: true };
+        const spent = campaign.spent || 0;
+        const revenue = campaign.revenue || 0;
+        const roas = spent > 0 ? Math.round((revenue / spent) * 100) : 0;
+        return { roas };
       }),
   }),
 
-  // مولد صفحات الهبوط بالذكاء الاصطناعي
-  landingPages: router({
-    list: tenantProcedure.query(async ({ ctx }) => {
-      return db.getLandingPagesByTenant(ctx.tenantId);
-    }),
-
-    get: tenantProcedure
-      .input(z.object({ id: z.number() }))
-      .query(async ({ ctx, input }) => {
-        const page = await db.getLandingPageById(input.id, ctx.tenantId);
-        if (!page) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "صفحة الهبوط غير موجودة",
-          });
-        }
-        return page;
-      }),
-
-    generate: tenantProcedure
+  // Events Ingestion API
+  events: router({
+    track: tenantProcedure
       .input(
         z.object({
-          productId: z.number().optional(),
-          productName: z.string().min(1, "اسم المنتج مطلوب"),
-          productDescription: z.string(),
-          imageUrl: z.string().optional(),
+          event_name: z.string().min(1, "اسم الحدث مطلوب"),
+          store_id: z.string().uuid().optional(),
+          session_id: z.string().optional(),
+          user_id: z.string().uuid().optional(),
+          product_id: z.string().uuid().optional(),
+          order_id: z.string().uuid().optional(),
+          source: z.string().optional(),
+          utm_source: z.string().optional(),
+          utm_campaign: z.string().optional(),
+          utm_content: z.string().optional(),
+          utm_term: z.string().optional(),
+          ad_platform: z.string().optional(),
+          ad_account_id: z.string().optional(),
+          campaign_platform_id: z.string().optional(),
+          ad_id: z.string().optional(),
+          event_data: z.record(z.string(), z.unknown()).optional(),
+          occurred_at: z.string().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
-        // إنشاء prompt للذكاء الاصطناعي
-        const prompt = `أنت خبير في كتابة صفحات الهبوط للتجارة الإلكترونية.
-بناءً على المعلومات التالية، قم بإنشاء صفحة هبوط احترافية بالعربية:
-
-اسم المنتج: ${input.productName}
-الوصف: ${input.productDescription}
-
-أرجع JSON بالشكل التالي:
-{
-  "headline": "عنوان جذاب وقوي",
-  "description": "وصف مقنع للمنتج",
-  "features": ["ميزة 1", "ميزة 2", "ميزة 3", "ميزة 4", "ميزة 5"],
-  "cta": "نص زر الدعوة لاتخاذ إجراء"
-}`;
-
-        const response = await invokeLLM({
-          messages: [
-            {
-              role: "system",
-              content: "أنت خبير في التسويق وكتابة المحتوى للتجارة الإلكترونية.",
-            },
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "landing_page_content",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  headline: { type: "string" },
-                  description: { type: "string" },
-                  features: {
-                    type: "array",
-                    items: { type: "string" },
-                  },
-                  cta: { type: "string" },
-                },
-                required: ["headline", "description", "features", "cta"],
-                additionalProperties: false,
-              },
-            },
-          },
+        await db.trackEvent({
+          tenant_id: ctx.tenantId,
+          event_name: input.event_name || null,
+          store_id: input.store_id || null,
+          session_id: input.session_id || null,
+          user_id: input.user_id || null,
+          product_id: input.product_id || null,
+          order_id: input.order_id || null,
+          source: input.source || null,
+          utm_source: input.utm_source || null,
+          utm_campaign: input.utm_campaign || null,
+          utm_content: input.utm_content || null,
+          utm_term: input.utm_term || null,
+          ad_platform: input.ad_platform || null,
+          ad_account_id: input.ad_account_id || null,
+          campaign_platform_id: input.campaign_platform_id || null,
+          ad_id: input.ad_id || null,
+          event_data: input.event_data || null,
+          occurred_at: input.occurred_at || new Date().toISOString(),
         });
-
-        const contentStr = typeof response.choices[0].message.content === "string" 
-          ? response.choices[0].message.content 
-          : JSON.stringify(response.choices[0].message.content);
-        const content = JSON.parse(contentStr);
-
-        // حفظ صفحة الهبوط
-        const pageId = await db.createLandingPage({
-          tenantId: ctx.tenantId,
-          productId: input.productId,
-          title: content.headline,
-          content,
-          imageUrls: input.imageUrl ? [input.imageUrl] : [],
-          aiPrompt: input.productDescription,
-          status: "draft",
-        });
-
-        return { pageId, content };
-      }),
-
-    publish: tenantProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        await db.updateLandingPage(input.id, ctx.tenantId, { status: "published" });
         return { success: true };
       }),
 
-    delete: tenantProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        await db.deleteLandingPage(input.id, ctx.tenantId);
-        return { success: true };
+    list: tenantProcedure
+      .input(
+        z
+          .object({
+            limit: z.number().min(1).max(1000).default(100),
+          })
+          .optional()
+      )
+      .query(async ({ ctx, input }) => {
+        return db.getEventsByTenant(ctx.tenantId, input?.limit);
       }),
   }),
 
@@ -508,14 +486,17 @@ export const appRouter = router({
       .input(
         z.object({
           message: z.string().min(1),
-          conversationId: z.number().optional(),
+          conversationId: z.string().uuid().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         // الحصول على المحادثة الحالية أو إنشاء جديدة
         let conversation;
         if (input.conversationId) {
-          conversation = await db.getConversationById(input.conversationId, ctx.tenantId);
+          conversation = await db.getConversationById(
+            input.conversationId,
+            ctx.tenantId
+          );
           if (!conversation) {
             throw new TRPCError({
               code: "NOT_FOUND",
@@ -530,7 +511,10 @@ export const appRouter = router({
             title: input.message.substring(0, 50),
             messages: [],
           });
-          conversation = await db.getConversationById(conversationId, ctx.tenantId);
+          conversation = await db.getConversationById(
+            conversationId,
+            ctx.tenantId
+          );
         }
 
         if (!conversation) {
@@ -542,14 +526,12 @@ export const appRouter = router({
 
         // جمع السياق من قاعدة البيانات
         const stats = await db.getTenantStats(ctx.tenantId);
-        const recentOrders = await db.getOrdersByTenant(ctx.tenantId, 5);
-        const activeCampaigns = await db.getCampaignsByTenant(ctx.tenantId);
 
         const contextInfo = `معلومات المتجر:
 - عدد المنتجات: ${stats?.productsCount || 0}
 - عدد الطلبات: ${stats?.ordersCount || 0}
 - عدد الحملات: ${stats?.campaignsCount || 0}
-- إجمالي الإيرادات: ${((stats?.totalRevenue || 0) / 100).toFixed(2)} ر.س`;
+- إجمالي الإيرادات: ${stats?.totalRevenue || 0}`;
 
         // إضافة رسالة المستخدم
         const messages = [
@@ -581,9 +563,10 @@ ${contextInfo}
 
         const aiMessage = {
           role: "assistant" as const,
-          content: typeof response.choices[0].message.content === "string" 
-            ? response.choices[0].message.content 
-            : JSON.stringify(response.choices[0].message.content),
+          content:
+            typeof response.choices[0].message.content === "string"
+              ? response.choices[0].message.content
+              : JSON.stringify(response.choices[0].message.content),
           timestamp: Date.now(),
         };
 
@@ -604,9 +587,12 @@ ${contextInfo}
     }),
 
     getConversation: tenantProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
-        const conversation = await db.getConversationById(input.id, ctx.tenantId);
+        const conversation = await db.getConversationById(
+          input.id,
+          ctx.tenantId
+        );
         if (!conversation) {
           throw new TRPCError({
             code: "NOT_FOUND",
@@ -614,6 +600,340 @@ ${contextInfo}
           });
         }
         return conversation;
+      }),
+  }),
+
+  // صفحات الهبوط
+  landingPages: router({
+    list: tenantProcedure.query(async ({ ctx }) => {
+      return db.getLandingPagesByTenant(ctx.tenantId);
+    }),
+
+    get: tenantProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const page = await db.getLandingPageById(input.id, ctx.tenantId);
+        if (!page) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "صفحة الهبوط غير موجودة",
+          });
+        }
+        return page;
+      }),
+
+    generate: tenantProcedure
+      .input(
+        z.object({
+          productId: z.string().uuid().optional(),
+          productName: z.string().min(1, "اسم المنتج مطلوب"),
+          productDescription: z.string(),
+          imageUrl: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const prompt = `أنت خبير في كتابة صفحات الهبوط للتجارة الإلكترونية.
+بناءً على المعلومات التالية، قم بإنشاء صفحة هبوط احترافية بالعربية:
+
+اسم المنتج: ${input.productName}
+الوصف: ${input.productDescription}
+
+أرجع JSON بالشكل التالي:
+{
+  "headline": "عنوان جذاب وقوي",
+  "description": "وصف مقنع للمنتج",
+  "features": ["ميزة 1", "ميزة 2", "ميزة 3", "ميزة 4", "ميزة 5"],
+  "cta": "نص زر الدعوة لاتخاذ إجراء"
+}`;
+
+        const response = await invokeLLM({
+          messages: [
+            {
+              role: "system",
+              content:
+                "أنت خبير في التسويق وكتابة المحتوى للتجارة الإلكترونية.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "landing_page_content",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  headline: { type: "string" },
+                  description: { type: "string" },
+                  features: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                  cta: { type: "string" },
+                },
+                required: ["headline", "description", "features", "cta"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        const contentStr =
+          typeof response.choices[0].message.content === "string"
+            ? response.choices[0].message.content
+            : JSON.stringify(response.choices[0].message.content);
+        const content = JSON.parse(contentStr);
+
+        const pageId = await db.createLandingPage({
+          tenantId: ctx.tenantId,
+          productId: input.productId,
+          title: content.headline,
+          content,
+          imageUrls: input.imageUrl ? [input.imageUrl] : [],
+          aiPrompt: input.productDescription,
+          status: "draft",
+        });
+
+        return { pageId, content };
+      }),
+
+    publish: tenantProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateLandingPage(input.id, ctx.tenantId, {
+          status: "published",
+        });
+        return { success: true };
+      }),
+
+    delete: tenantProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteLandingPage(input.id, ctx.tenantId);
+        return { success: true };
+      }),
+  }),
+
+  // ==================== Payment Methods ====================
+  paymentMethods: router({
+    list: tenantProcedure.query(async ({ ctx }) => {
+      return db.getPaymentMethods(ctx.tenantId);
+    }),
+
+    listEnabled: tenantProcedure.query(async ({ ctx }) => {
+      return db.getEnabledPaymentMethods(ctx.tenantId);
+    }),
+
+    get: tenantProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const method = await db.getPaymentMethodById(ctx.tenantId, input.id);
+        if (!method) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "طريقة الدفع غير موجودة",
+          });
+        }
+        return method;
+      }),
+
+    create: tenantProcedure
+      .input(
+        z.object({
+          provider: z.string().min(1, "مزود الدفع مطلوب"),
+          name: z.string().min(1, "اسم طريقة الدفع مطلوب"),
+          name_ar: z.string().optional(),
+          description: z.string().optional(),
+          description_ar: z.string().optional(),
+          is_enabled: z.boolean().default(false),
+          is_default: z.boolean().default(false),
+          config: z.record(z.string(), z.unknown()).optional(),
+          supported_currencies: z.array(z.string()).optional(),
+          min_amount: z.number().min(0).optional(),
+          max_amount: z.number().min(0).optional(),
+          fee_type: z.enum(["percentage", "fixed", "mixed"]).optional(),
+          fee_percentage: z.number().min(0).max(100).optional(),
+          fee_fixed: z.number().min(0).optional(),
+          display_order: z.number().min(0).optional(),
+          icon_url: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const method = await db.createPaymentMethod(ctx.tenantId, input);
+        return { id: method.id, message: "تم إنشاء طريقة الدفع بنجاح" };
+      }),
+
+    update: tenantProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          name: z.string().optional(),
+          name_ar: z.string().optional(),
+          description: z.string().optional(),
+          description_ar: z.string().optional(),
+          is_enabled: z.boolean().optional(),
+          is_default: z.boolean().optional(),
+          config: z.record(z.string(), z.unknown()).optional(),
+          supported_currencies: z.array(z.string()).optional(),
+          min_amount: z.number().min(0).optional(),
+          max_amount: z.number().min(0).optional(),
+          fee_type: z.enum(["percentage", "fixed", "mixed"]).optional(),
+          fee_percentage: z.number().min(0).max(100).optional(),
+          fee_fixed: z.number().min(0).optional(),
+          display_order: z.number().min(0).optional(),
+          icon_url: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...data } = input;
+        await db.updatePaymentMethod(ctx.tenantId, id, data);
+        return { success: true, message: "تم تحديث طريقة الدفع بنجاح" };
+      }),
+
+    delete: tenantProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deletePaymentMethod(ctx.tenantId, input.id);
+        return { success: true, message: "تم حذف طريقة الدفع بنجاح" };
+      }),
+
+    setDefault: tenantProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.setDefaultPaymentMethod(ctx.tenantId, input.id);
+        return { success: true, message: "تم تعيين طريقة الدفع الافتراضية" };
+      }),
+
+    toggle: tenantProcedure
+      .input(z.object({ id: z.string().uuid(), is_enabled: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updatePaymentMethod(ctx.tenantId, input.id, { is_enabled: input.is_enabled });
+        return { success: true, message: input.is_enabled ? "تم تفعيل طريقة الدفع" : "تم تعطيل طريقة الدفع" };
+      }),
+  }),
+
+  // ==================== Payment Transactions ====================
+  paymentTransactions: router({
+    list: tenantProcedure
+      .input(
+        z.object({
+          status: z.string().optional(),
+          order_id: z.string().uuid().optional(),
+          customer_id: z.string().uuid().optional(),
+          limit: z.number().min(1).max(200).default(50),
+          offset: z.number().min(0).default(0),
+        }).optional()
+      )
+      .query(async ({ ctx, input }) => {
+        return db.getPaymentTransactions(ctx.tenantId, input);
+      }),
+
+    create: tenantProcedure
+      .input(
+        z.object({
+          order_id: z.string().uuid().optional(),
+          customer_id: z.string().uuid().optional(),
+          payment_method_id: z.string().uuid().optional(),
+          amount: z.number().min(0.01, "المبلغ يجب أن يكون أكبر من صفر"),
+          currency: z.string().default("USD"),
+          type: z.enum(["payment", "refund", "partial_refund"]).default("payment"),
+          metadata: z.record(z.string(), z.unknown()).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const transaction = await db.createPaymentTransaction(ctx.tenantId, {
+          ...input,
+          status: "pending",
+        });
+        return { id: transaction.id, message: "تم إنشاء المعاملة بنجاح" };
+      }),
+
+    updateStatus: tenantProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          status: z.enum(["pending", "processing", "completed", "failed", "cancelled", "refunded"]),
+          error_message: z.string().optional(),
+          error_code: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...data } = input;
+        if (data.status === "completed") {
+          (data as any).completed_at = new Date().toISOString();
+        }
+        await db.updatePaymentTransaction(ctx.tenantId, id, data);
+        return { success: true, message: "تم تحديث حالة المعاملة" };
+      }),
+  }),
+
+  // ==================== Payment Proofs (Vodafone Cash, etc.) ====================
+  paymentProofs: router({
+    list: tenantProcedure
+      .input(
+        z.object({
+          status: z.string().optional(),
+          order_id: z.string().uuid().optional(),
+          limit: z.number().min(1).max(200).default(50),
+          offset: z.number().min(0).default(0),
+        }).optional()
+      )
+      .query(async ({ ctx, input }) => {
+        return db.getPaymentProofs(ctx.tenantId, input);
+      }),
+
+    create: tenantProcedure
+      .input(
+        z.object({
+          order_id: z.string().uuid().optional(),
+          customer_id: z.string().uuid().optional(),
+          proof_type: z.enum(["vodafone_cash", "instapay", "bank_transfer", "other"]),
+          proof_url: z.string().optional(),
+          reference_number: z.string().optional(),
+          sender_phone: z.string().optional(),
+          sender_name: z.string().optional(),
+          amount_claimed: z.number().min(0).optional(),
+          currency: z.string().default("EGP"),
+          notes: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const proof = await db.createPaymentProof(ctx.tenantId, input);
+        return { id: proof.id, message: "تم رفع إثبات الدفع بنجاح" };
+      }),
+
+    review: tenantProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          status: z.enum(["approved", "rejected"]),
+          rejection_reason: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        await db.reviewPaymentProof(ctx.tenantId, input.id, {
+          status: input.status,
+          reviewed_by: ctx.user.id,
+          rejection_reason: input.rejection_reason,
+        });
+        return { 
+          success: true, 
+          message: input.status === "approved" ? "تم قبول إثبات الدفع" : "تم رفض إثبات الدفع" 
+        };
+      }),
+  }),
+
+  // ==================== Webhook Events ====================
+  webhooks: router({
+    // This would typically be a public endpoint for payment providers
+    // For now, we'll create a stub that can be extended later
+    listUnprocessed: tenantProcedure
+      .input(z.object({ provider: z.string().optional(), limit: z.number().default(100) }).optional())
+      .query(async ({ input }) => {
+        return db.getUnprocessedWebhooks(input?.provider, input?.limit);
       }),
   }),
 });

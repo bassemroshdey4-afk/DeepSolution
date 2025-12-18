@@ -10,7 +10,7 @@ import { Streamdown } from "streamdown";
 
 export default function AIAssistant() {
   const [message, setMessage] = useState("");
-  const [conversationId, setConversationId] = useState<number | undefined>();
+  const [conversationId, setConversationId] = useState<string | undefined>();
   const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 

@@ -144,7 +144,7 @@ export default function Orders() {
                       onValueChange={(value) =>
                         updateCallCenterStatusMutation.mutate({
                           id: order.id,
-                          callCenterStatus: value as any,
+                          call_center_status: value as "pending" | "contacted" | "confirmed" | "cancelled",
                         })
                       }
                     >
