@@ -1,0 +1,15 @@
+{
+  "query": "CREATE TABLE IF NOT EXISTS wallets (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  balance DECIMAL(15,2) NOT NULL DEFAULT 0.00,\n  currency VARCHAR(3) NOT NULL DEFAULT 'SAR',\n  created_at TIMESTAMPTZ DEFAULT NOW(),\n  updated_at TIMESTAMPTZ DEFAULT NOW(),\n  UNIQUE(tenant_id)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user jKyFiW3x3ZdCgW7.root --database YKph7KBXFR4HVNNwggGHhW --execute CREATE TABLE IF NOT EXISTS wallets (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  balance DECIMAL(15,2) NOT NULL DEFAULT 0.00,\n  currency VARCHAR(3) NOT NULL DEFAULT 'SAR',\n  created_at TIMESTAMPTZ DEFAULT NOW(),\n  updated_at TIMESTAMPTZ DEFAULT NOW(),\n  UNIQUE(tenant_id)\n);",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1064 (42000) at line 1: You have an error in your SQL syntax; check the manual that corresponds to your TiDB version for the right syntax to use line 2 column 10 near \"UUID PRIMARY KEY DEFAULT gen_random_uuid(),",
+    "  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,",
+    "  balance DECIMAL(15,2) NOT NULL DEFAULT 0.00,",
+    "  currency VARCHAR(3) NOT NULL DEFAULT 'SAR',",
+    "  created_at TIMESTAMPTZ DEFAULT NOW(),",
+    "  updated_at TIMESTAMPTZ DEFAULT NOW(),",
+    "  UNIQUE(tenant_id)",
+    ")\""
+  ]
+}

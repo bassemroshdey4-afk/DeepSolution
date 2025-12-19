@@ -27,6 +27,22 @@ const requireUser = t.middleware(async opts => {
 
 export const protectedProcedure = t.procedure.use(requireUser);
 
+// Middleware للتحقق من وجود tenant_id
+export const tenantProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (!ctx.user.tenantId) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "يجب أن تكون مرتبطاً بمستأجر للوصول لهذه الميزة",
+    });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      tenantId: ctx.user.tenantId as string,
+    },
+  });
+});
+
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;

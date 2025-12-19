@@ -169,16 +169,18 @@
 - [x] حفظ checkpoint
 
 
-## Wallet System (نظام المحفظة)
-- [ ] إنشاء جدول wallets (tenant_id, balance, currency)
-- [ ] إنشاء جدول wallet_transactions (شحن، خصم، استرداد)
+## Wallet System (نظام المحفظة) ✅
+- [x] إنشاء جدول wallets (tenant_id, balance, currency)
+- [x] إنشاء جدول wallet_transactions (شحن، خصم، استرداد)
 - [ ] إنشاء جدول ai_addons (الإضافات المتاحة)
 - [ ] إنشاء جدول tenant_addons (الإضافات المفعلة لكل tenant)
 - [ ] إنشاء جدول usage_tracking (تتبع استخدام AI)
-- [ ] APIs: شحن المحفظة
-- [ ] APIs: خصم من المحفظة
-- [ ] APIs: عرض الرصيد والمعاملات
+- [x] APIs: شحن المحفظة (wallet.topUp)
+- [x] APIs: خصم من المحفظة (wallet.debit)
+- [x] APIs: عرض الرصيد والمعاملات (wallet.getBalance, wallet.getTransactions)
 - [ ] APIs: تفعيل/إلغاء الإضافات
 - [ ] APIs: تتبع الاستخدام
-- [ ] واجهة المحفظة في Dashboard
-- [ ] الأسعار قابلة للتكوين (غير محددة)
+- [x] واجهة المحفظة في Dashboard (/wallet)
+- [x] الأسعار قابلة للتكوين (غير محددة)
+- [x] منع الرصيد السالب (إلا بتجاوز Super Admin)
+- [x] اختبارات Vitest (10 اختبارات)

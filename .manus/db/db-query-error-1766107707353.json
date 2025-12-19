@@ -1,0 +1,14 @@
+{
+  "query": "CREATE TABLE IF NOT EXISTS wallet_transactions (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  wallet_id UUID NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,\n  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  type VARCHAR(20) NOT NULL CHECK (type IN ('credit', 'debit', 'refund', 'adjustment')),\n  amount DECIMAL(15,2) NOT NULL,\n  balance_before DECIMAL(15,2) NOT NULL,\n  balance_after DECIMAL(15,2) NOT NULL,\n  description TEXT,\n  reference_type VARCHAR(50),\n  reference_id UUID,\n  created_by UUID,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user jKyFiW3x3ZdCgW7.root --database YKph7KBXFR4HVNNwggGHhW --execute CREATE TABLE IF NOT EXISTS wallet_transactions (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  wallet_id UUID NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,\n  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  type VARCHAR(20) NOT NULL CHECK (type IN ('credit', 'debit', 'refund', 'adjustment')),\n  amount DECIMAL(15,2) NOT NULL,\n  balance_before DECIMAL(15,2) NOT NULL,\n  balance_after DECIMAL(15,2) NOT NULL,\n  description TEXT,\n  reference_type VARCHAR(50),\n  reference_id UUID,\n  created_by UUID,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1064 (42000) at line 1: You have an error in your SQL syntax; check the manual that corresponds to your TiDB version for the right syntax to use line 2 column 10 near \"UUID PRIMARY KEY DEFAULT gen_random_uuid(),",
+    "  wallet_id UUID NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,",
+    "  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,",
+    "  type VARCHAR(20) NOT NULL CHECK (type IN ('credit', 'debit', 'refund', 'adjustment')),",
+    "  amount DECIMAL(15,2) NOT NULL,",
+    "  balance_before DECIMAL(15,2) NOT NULL,",
+    "  balance_after DECIMAL("
+  ]
+}

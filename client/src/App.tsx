@@ -17,6 +17,7 @@ import LandingPages from "./pages/LandingPages";
 import AIAssistant from "./pages/AIAssistant";
 import PaymentSettings from "./pages/PaymentSettings";
 import SuperAdmin from "./pages/SuperAdmin";
+import Wallet from "./pages/Wallet";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -80,6 +81,7 @@ function Router() {
       <Route path="/landing-pages">{() => <ProtectedRoute component={LandingPages} />}</Route>
       <Route path="/ai-assistant">{() => <ProtectedRoute component={AIAssistant} />}</Route>
       <Route path="/settings/payments">{() => <ProtectedRoute component={PaymentSettings} />}</Route>
+      <Route path="/wallet">{() => <ProtectedRoute component={Wallet} />}</Route>
       <Route>
         <Redirect to="/" />
       </Route>

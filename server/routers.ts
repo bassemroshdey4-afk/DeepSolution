@@ -4,29 +4,17 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { superAdminRouter } from "./superAdminRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { walletRouter } from "./walletRouter";
+import { publicProcedure, protectedProcedure, router, tenantProcedure } from "./_core/trpc";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
 
-// Middleware للتحقق من وجود tenant_id
-const tenantProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!ctx.user.tenantId) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "يجب أن تكون مرتبطاً بمستأجر للوصول لهذه الميزة",
-    });
-  }
-  return next({
-    ctx: {
-      ...ctx,
-      tenantId: ctx.user.tenantId as string,
-    },
-  });
-});
+
 
 export const appRouter = router({
   system: systemRouter,
   superAdmin: superAdminRouter,
+  wallet: walletRouter,
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
