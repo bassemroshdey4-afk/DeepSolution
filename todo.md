@@ -109,7 +109,8 @@
 ### Arabic RTL Dashboard (Supabase-connected)
 - [x] Connect dashboard to Supabase for real data
 - [x] Display tenant info from Supabase
-- [ ] Show trial status and limits
+- [x] Show trial status and limits
+- [x] إضافة شريط حالة Trial في Dashboard
 - [ ] Display real orders/campaigns/products counts
 
 ### AI Read-only Insights
@@ -166,3 +167,18 @@
 - [x] API: تعيين حدود استخدام AI
 - [x] إنشاء صفحة /admin بسيطة
 - [x] حفظ checkpoint
+
+
+## Wallet System (نظام المحفظة)
+- [ ] إنشاء جدول wallets (tenant_id, balance, currency)
+- [ ] إنشاء جدول wallet_transactions (شحن، خصم، استرداد)
+- [ ] إنشاء جدول ai_addons (الإضافات المتاحة)
+- [ ] إنشاء جدول tenant_addons (الإضافات المفعلة لكل tenant)
+- [ ] إنشاء جدول usage_tracking (تتبع استخدام AI)
+- [ ] APIs: شحن المحفظة
+- [ ] APIs: خصم من المحفظة
+- [ ] APIs: عرض الرصيد والمعاملات
+- [ ] APIs: تفعيل/إلغاء الإضافات
+- [ ] APIs: تتبع الاستخدام
+- [ ] واجهة المحفظة في Dashboard
+- [ ] الأسعار قابلة للتكوين (غير محددة)
