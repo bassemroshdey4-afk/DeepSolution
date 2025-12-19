@@ -346,4 +346,39 @@
 ### 5. Testing & Documentation ✅
 - [x] 32 اختبار Vitest
 - [x] 136 اختبار إجمالي
+- [x] checkpoint (6b5c5188)
+
+
+## Shipping Automation Add-on (Paid Service) ✅
+### 1. Add-on Definition ✅
+- [x] إضافة "shipping_automation" في ai_addons
+- [x] تفعيل trial (14 يوم، 50 وحدة)
+- [x] monthly renewal + usage metering (99$/شهر، 500 وحدة)
+
+### 2. Integration Modes ✅
+- [x] API/Webhook mode (مع endpoint لكل carrier)
+- [x] Sheet Import mode (CSV/Excel)
+- [x] Column mapping per carrier (aramex, smsa, dhl, generic)
+- [x] RPA Portal mode (stub لـ n8n)
+
+### 3. COD Tracking ✅
+- [x] إضافة حقول: cod_amount, cod_collected, cod_collected_at
+- [x] تحديث order status تلقائياً
+
+### 4. Usage Metering ✅
+- [x] Sheet Import = 1 unit
+- [x] RPA run = 1 unit
+- [x] Block when exhausted (PRECONDITION_FAILED)
+- [x] Log usage to ai_usage_logs
+
+### 5. Integrations UI ✅
+- [x] صفحة /integrations
+- [x] تفعيل Add-on (تجريبي)
+- [x] اختيار mode per carrier (API/Sheet/RPA)
+- [x] Sheet upload UI مع preview
+- [x] Last sync time + result
+
+### 6. Testing ✅
+- [x] 40 اختبار Vitest
+- [x] 177 اختبار إجمالي
 - [ ] checkpoint

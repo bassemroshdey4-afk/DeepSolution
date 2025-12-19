@@ -9,6 +9,7 @@ import { aiAddonsRouter } from "./aiAddonsRouter";
 import { aiPipelineRouter } from "./aiPipelineRouter";
 import { shippingRouter } from "./shippingRouter";
 import { carrierPerformanceRouter } from "./carrierPerformanceRouter";
+import { shippingIntegrationsRouter } from "./shippingIntegrationsRouter";
 import { publicProcedure, protectedProcedure, router, tenantProcedure } from "./_core/trpc";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
@@ -23,6 +24,7 @@ export const appRouter = router({
   aiPipeline: aiPipelineRouter,
   shipping: shippingRouter,
   carrierPerformance: carrierPerformanceRouter,
+  shippingIntegrations: shippingIntegrationsRouter,
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
