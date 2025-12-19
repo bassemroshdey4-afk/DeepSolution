@@ -265,6 +265,63 @@ export const appRouter = router({
           0
         );
 
+        // حساب رسوم المنصة (قابلة للتكوين)
+        // TODO: جلب الأسعار من جدول platform_pricing
+        const PLATFORM_FEE_PERCENTAGE = 0; // 0% افتراضياً - قابل للتكوين
+        const PLATFORM_FEE_FIXED = 0; // 0 افتراضياً - قابل للتكوين
+        const platform_fee = (total_amount * PLATFORM_FEE_PERCENTAGE / 100) + PLATFORM_FEE_FIXED;
+
+        // التحقق من رصيد المحفظة وخصم الرسوم (إذا كانت أكبر من 0)
+        if (platform_fee > 0) {
+          const { supabaseAdmin } = await import("./supabase");
+          
+          // الحصول على المحفظة
+          const { data: wallet, error: walletError } = await supabaseAdmin
+            .from("wallets")
+            .select("*")
+            .eq("tenant_id", ctx.tenantId)
+            .single();
+
+          if (walletError && walletError.code !== "PGRST116") {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "خطأ في الوصول للمحفظة",
+            });
+          }
+
+          const currentBalance = wallet ? parseFloat(wallet.balance) : 0;
+
+          // التحقق من الرصيد الكافي
+          if (currentBalance < platform_fee) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `رصيد المحفظة غير كافي. المطلوب: ${platform_fee} - المتاح: ${currentBalance}`,
+            });
+          }
+
+          // خصم الرسوم من المحفظة
+          const balanceAfter = currentBalance - platform_fee;
+          await supabaseAdmin
+            .from("wallets")
+            .update({ balance: balanceAfter, updated_at: new Date().toISOString() })
+            .eq("id", wallet.id);
+
+          // تسجيل المعاملة (سيتم ربطها بالطلب بعد إنشائه)
+          await supabaseAdmin
+            .from("wallet_transactions")
+            .insert({
+              wallet_id: wallet.id,
+              tenant_id: ctx.tenantId,
+              type: "debit",
+              amount: platform_fee,
+              balance_before: currentBalance,
+              balance_after: balanceAfter,
+              description: `رسوم طلب #${orderData.order_number}`,
+              reference_type: "order",
+              created_by: ctx.user.id,
+            });
+        }
+
         // إنشاء الطلب
         const orderId = await db.createOrder({
           ...orderData,
