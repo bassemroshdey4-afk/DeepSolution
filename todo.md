@@ -640,3 +640,36 @@
 - [x] Auth integration (OAuth compatible)
 - [x] Layout + Navigation (DashboardLayout)
 - [x] Dashboard migration (read-only)
+
+
+## Product Intelligence Core (Block 1)
+
+### Database
+- [x] product_intelligence table with versioning (version column, input_hash for dedup)
+- [x] Immutable history (no updates, only inserts)
+- [x] Indexes for fast queries (product_id, tenant_id, version)
+
+### Service
+- [x] ProductIntelligenceService class
+- [x] analyzeProduct(images, description) → structured output
+- [x] Structured fields: audience, pain_points, price_sensitivity, usp, visual_style, keywords, competitors
+- [x] AI as analyzer only (no decisions)
+
+### API
+- [x] tRPC endpoint: analyze product
+- [x] tRPC endpoint: get intelligence by product
+- [x] tRPC endpoint: get intelligence history
+
+### Audit
+- [x] All outputs versioned (no overwrite)
+- [x] Audit log integration
+
+### Validation & Lock-in (Phase 5)
+- [x] Tests: version increment per product
+- [x] Tests: immutability guarantee
+- [x] Tests: tenant isolation (RLS)
+- [x] Tests: source_type recording (ai/manual/hybrid)
+- [x] Documentation: PRODUCT_INTELLIGENCE.md
+- [x] 44 tests passing
+
+**BLOCK 1 COMPLETE** ✅
