@@ -450,7 +450,7 @@
 ### 8. Testing ✅
 - [x] 48 اختبار Vitest
 - [x] 263 اختبار إجمالي
-- [ ] checkpoint
+- [x] checkpoint (f29cc8b5)
 
 ### Extension: Product & Time Analytics ✅
 - [x] getDailySnapshots API
@@ -460,3 +460,37 @@
 - [x] COD settlement delay tracking (avgSettlementDays)
 - [x] Profit pending until COD confirmed
 - [x] getInsights API (most profitable, losing, high shipping, high return)
+
+
+## Inventory & Procurement Engine ✅
+### 1. Inventory Core ✅
+- [x] products: quantity, reserved_stock (via metadata), cost, low_stock_threshold
+- [x] Stock updates: sales (deductStock), receiving (receivePurchaseOrder), returns, adjustments
+
+### 2. Stock Ledger ✅
+- [x] stock_movements مع fallback للذاكرة
+- [x] types: in, out, return, adjustment, purchase
+
+### 3. Suppliers ✅
+- [x] listSuppliers, createSupplier, updateSupplier APIs
+- [x] Supplier profiles مع payment_terms
+
+### 4. Purchase Orders ✅
+- [x] createPurchaseOrder, listPurchaseOrders APIs
+- [x] receivePurchaseOrder API
+- [x] statuses: draft, sent, partially_received, received, cancelled
+
+### 5. Purchase Invoices (Stub)
+- [x] هيكل جاهز للتوسع
+- [x] updateProductCost API
+
+### 6. Alerts & Integration ✅
+- [x] getLowStockAlerts API (critical/warning)
+- [x] getDelayedPOAlerts API (days overdue)
+- [x] reserveStock, releaseStock, deductStock APIs
+- [x] getProductCOGS لـ Profit Intelligence
+
+### 7. Testing ✅
+- [x] 31 اختبار Vitest
+- [x] 294 اختبار إجمالي
+- [ ] checkpoint
