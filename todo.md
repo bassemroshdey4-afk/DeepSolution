@@ -627,3 +627,16 @@
 - [x] Workflow 3: Shipping Status Sync → shipping_events + order status
 - [x] Workflow 4: COD Settlement Sync → finalize profit
 - [x] Workflow 5: Low Stock Alert → email + audit log
+
+
+## Ownership & Control Phase (Senior Engineer Mode)
+
+### Documentation
+- [x] ARCHITECTURE_OWNERSHIP.md - stack choices, AI boundaries, operability without AI
+- [x] AUTOMATION_AUTHORITY.md - full n8n workflow map, data sources, failure handling
+
+### Next.js Incremental Migration
+- [x] Next.js App Router shell with RTL
+- [x] Auth integration (OAuth compatible)
+- [x] Layout + Navigation (DashboardLayout)
+- [x] Dashboard migration (read-only)
