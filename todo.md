@@ -673,3 +673,12 @@
 - [x] 44 tests passing
 
 **BLOCK 1 COMPLETE** ✅
+
+
+## Official Path Lock-in Documentation
+
+- [x] DEPLOYMENT_OWNERSHIP.md (Vercel + env vars + domains)
+- [x] AI_PROVIDER_POLICY.md (OpenAI-only rules, keys, usage/billing)
+- [x] N8N_RUNBOOK.md (how n8n runs, webhooks, secrets, SMTP)
+
+**OFFICIAL PATH LOCKED** ✅
