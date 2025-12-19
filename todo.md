@@ -277,4 +277,73 @@
 ### 5. توثيق وتأكيد ✅
 - [x] 19 اختبار Vitest لـ Golden Path
 - [x] 80 اختبار إجمالي يمر بنجاح
-- [ ] checkpoint نهائي
+- [x] checkpoint نهائي (7ac692f3)
+
+
+## Shipping Intelligence Engine (Post-Sale Automation)
+### 1. Data Model
+- [ ] إنشاء جدول shipping_events في Supabase
+- [ ] تعريف الحالات الموحدة (CREATED, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, FAILED, RETURNED)
+- [ ] إضافة أنواع TypeScript
+
+### 2. Ingestion APIs
+- [ ] Webhook endpoint لاستقبال تحديثات الشحن
+- [ ] Polling API لتحديث الحالة يدوياً
+- [ ] تخزين raw carrier response
+
+### 3. Intelligence Logic
+- [ ] كشف التأخير (delay detection)
+- [ ] كشف الفشل والمرتجعات
+- [ ] تحديد at_risk orders
+- [ ] حدود زمنية قابلة للتكوين
+
+### 4. Order Sync
+- [ ] تحديث order.status تلقائياً
+- [ ] فصل shipping status عن order lifecycle
+
+### 5. Automation Hooks
+- [ ] trigger: delayed_orders
+- [ ] trigger: failed_deliveries
+- [ ] trigger: returned_shipments
+
+### 6. n8n Integration
+- [ ] مثال workflow للـ polling
+- [ ] توثيق كيفية ربط carriers
+
+### 7. Testing & Docs
+- [ ] اختبارات Vitest
+- [ ] توثيق قصير
+- [ ] checkpoint
+
+
+## Carrier Performance Intelligence Engine ✅
+### 1. Timeline Calculation ✅
+- [x] حساب assignment_time, pickup_time, delivery_time
+- [x] حساب pickup_delay, transit_time, delivery_time
+- [x] حساب return_cycle_time
+
+### 2. Carrier Metrics ✅
+- [x] avg pickup time per carrier
+- [x] avg delivery time per carrier
+- [x] delivery success rate
+- [x] return rate
+- [x] failure reasons aggregation
+
+### 3. Performance Scoring ✅
+- [x] speed score (48h=100, 96h=50)
+- [x] reliability score (من success rate)
+- [x] return rate score (lower=better)
+- [x] overall carrier score (weighted)
+- [x] tier assignment (excellent/good/average/poor)
+
+### 4. Insights & Routing ✅
+- [x] weak/strong carrier detection
+- [x] abnormal delay detection
+- [x] best carrier per region
+- [x] best carrier per payment method (COD/prepaid)
+- [x] alternative carriers recommendations
+
+### 5. Testing & Documentation ✅
+- [x] 32 اختبار Vitest
+- [x] 136 اختبار إجمالي
+- [ ] checkpoint

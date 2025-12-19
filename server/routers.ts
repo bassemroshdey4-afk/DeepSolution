@@ -7,6 +7,8 @@ import { superAdminRouter } from "./superAdminRouter";
 import { walletRouter } from "./walletRouter";
 import { aiAddonsRouter } from "./aiAddonsRouter";
 import { aiPipelineRouter } from "./aiPipelineRouter";
+import { shippingRouter } from "./shippingRouter";
+import { carrierPerformanceRouter } from "./carrierPerformanceRouter";
 import { publicProcedure, protectedProcedure, router, tenantProcedure } from "./_core/trpc";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
@@ -19,6 +21,8 @@ export const appRouter = router({
   wallet: walletRouter,
   aiAddons: aiAddonsRouter,
   aiPipeline: aiPipelineRouter,
+  shipping: shippingRouter,
+  carrierPerformance: carrierPerformanceRouter,
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
