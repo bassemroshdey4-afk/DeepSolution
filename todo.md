@@ -682,3 +682,35 @@
 - [x] N8N_RUNBOOK.md (how n8n runs, webhooks, secrets, SMTP)
 
 **OFFICIAL PATH LOCKED** ✅
+
+
+## Block 2: Marketing Decision Engine
+
+### Architecture
+- [x] MARKETING_DECISION_ENGINE.md - overall architecture doc
+- [x] Data flow diagram: Product Intelligence → Channel → Creative → Ad → Performance
+
+### 1. Channel Intelligence
+- [x] channel_recommendations table (product → channels + reasoning)
+- [x] channel_scores (embedded in recommendations as JSON)
+- [x] Versioned, immutable records
+
+### 2. Creative Logic
+- [x] creative_briefs table (hooks, angles, visuals BEFORE ad writing)
+- [x] creative_elements (embedded as JSON arrays)
+- [x] Link to Product Intelligence version
+
+### 3. Ad Generation Engine
+- [x] ad_creatives table (generated ads with versioning)
+- [x] ad_variations table (A/B test variants)
+- [x] Link to creative_brief version
+
+### 4. Performance Memory
+- [x] performance_records table (results from ad platforms)
+- [x] decision_log table (what was decided and why)
+- [x] learning_insights table (patterns and learnings)
+
+
+**BLOCK 2 ARCHITECTURE COMPLETE** ✅
+- 33 tests for Marketing Decision Engine
+- Total: 471 tests passing
