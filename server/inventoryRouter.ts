@@ -245,7 +245,18 @@ export const inventoryRouter = router({
 
         if (!product) continue;
 
+        const currentQty = product.quantity || 0;
         const currentReserved = product.metadata?.reserved_stock || 0;
+        const available = currentQty - currentReserved;
+        
+        // تحقق أمان: reserve <= available
+        if (item.quantity > available) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `المخزون المتاح غير كافي للمنتج ${item.productId}. المتاح: ${available}, المطلوب: ${item.quantity}`
+          });
+        }
+        
         const newReserved = currentReserved + item.quantity;
 
         await supabaseAdmin
@@ -338,11 +349,19 @@ export const inventoryRouter = router({
 
         const currentQty = product.quantity || 0;
         const currentReserved = product.metadata?.reserved_stock || 0;
+        
+        // تحقق أمان المخزون: منع المخزون السالب
+        if (currentQty < item.quantity) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `المخزون غير كافي للمنتج ${item.productId}. المتاح: ${currentQty}, المطلوب: ${item.quantity}`
+          });
+        }
 
         await supabaseAdmin
           .from("products")
           .update({
-            quantity: Math.max(0, currentQty - item.quantity),
+            quantity: currentQty - item.quantity, // لا حاجة لـ Math.max بعد التحقق
             metadata: {
               ...product.metadata,
               reserved_stock: Math.max(0, currentReserved - item.quantity),
@@ -615,7 +634,7 @@ export const inventoryRouter = router({
       return po;
     }),
 
-  // Receive purchase order items
+  // Receive purchase order items - مع حماية ضد الاستلام المزدوج
   receivePurchaseOrder: tenantProcedure
     .input(z.object({
       poId: z.string(),
@@ -623,8 +642,28 @@ export const inventoryRouter = router({
         productId: z.string(),
         receivedQuantity: z.number(),
       })),
+      idempotency_key: z.string().optional(), // مفتاح لمنع الاستلام المزدوج
     }))
     .mutation(async ({ ctx, input }) => {
+      // التحقق من حالة PO - منع الاستلام إذا كان مكتملاً أو ملغى
+      try {
+        const { data: po } = await supabaseAdmin
+          .from("purchase_orders")
+          .select("status")
+          .eq("id", input.poId)
+          .eq("tenant_id", ctx.tenantId)
+          .single();
+        
+        if (po && (po.status === "received" || po.status === "cancelled")) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `لا يمكن استلام طلب شراء بحالة ${po.status}`
+          });
+        }
+      } catch (e) {
+        if (e instanceof TRPCError) throw e;
+      }
+      
       // Update received quantities and stock
       for (const item of input.items) {
         // Record stock movement

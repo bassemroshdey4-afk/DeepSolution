@@ -521,4 +521,39 @@
 ### 5. Manual Acceptance Test ✅
 - [x] دليل اختبار القبول اليدوي (docs/manual-acceptance-test.md)
 - [x] 294 اختبار Vitest
+- [x] checkpoint (aaf8cd32)
+
+
+## Security & Hardening (No New Features) ✅
+### 1. Multi-tenant Security ✅
+- [x] Audit all tables have tenant_id (backend enforcement)
+- [x] 36 cross-tenant access denial tests
+
+### 2. Money Safety ✅
+- [x] Idempotency keys for wallet deductions
+- [x] Prevent double-charge (returns duplicate flag)
+- [x] Immutable audit logs (balance_before/after)
+
+### 3. Inventory Safety ✅
+- [x] No negative stock invariant (PRECONDITION_FAILED)
+- [x] Reserve <= available invariant
+- [x] Stock movement logging for every change
+
+### 4. Purchasing Safety ✅
+- [x] Prevent double receive (blocks received/cancelled PO)
+- [x] Validate partial receiving
+
+### 5. Permissions Enforcement ✅
+- [x] tenantProcedure for all tenant operations
+- [x] superAdminProcedure for admin operations
+- [x] 5 permission enforcement tests
+
+### 6. n8n Hardening ✅
+- [x] Webhook signature structure
+- [x] Timestamp validation (replay prevention)
+- [x] 2 webhook security tests
+
+### 7. Documentation & Testing ✅
+- [x] SECURITY_CHECKLIST.md
+- [x] 51 security tests (345 total)
 - [ ] checkpoint

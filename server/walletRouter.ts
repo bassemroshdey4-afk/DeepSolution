@@ -150,7 +150,7 @@ export const walletRouter = router({
       };
     }),
 
-  // خصم من المحفظة (Debit)
+  // خصم من المحفظة (Debit) - مع idempotency key
   debit: tenantProcedure
     .input(
       z.object({
@@ -158,11 +158,32 @@ export const walletRouter = router({
         description: z.string(),
         reference_type: z.string(), // e.g., 'order', 'ai_addon', 'service'
         reference_id: z.string().optional(),
+        idempotency_key: z.string().optional(), // مفتاح لمنع الخصم المزدوج
         allow_negative: z.boolean().optional().default(false), // Super Admin override
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { amount, description, reference_type, reference_id, allow_negative } = input;
+      const { amount, description, reference_type, reference_id, idempotency_key, allow_negative } = input;
+      
+      // التحقق من idempotency key لمنع الخصم المزدوج
+      if (idempotency_key) {
+        const { data: existingTx } = await supabaseAdmin
+          .from("wallet_transactions")
+          .select("id, balance_after")
+          .eq("tenant_id", ctx.user.tenantId)
+          .eq("idempotency_key", idempotency_key)
+          .single();
+        
+        if (existingTx) {
+          // إرجاع نتيجة العملية السابقة بدون خصم مزدوج
+          return {
+            success: true,
+            newBalance: existingTx.balance_after,
+            duplicate: true,
+            message: "العملية تمت مسبقاً"
+          };
+        }
+      }
 
       // الحصول على المحفظة
       const { data: wallet, error: walletError } = await supabaseAdmin
@@ -202,7 +223,7 @@ export const walletRouter = router({
         });
       }
 
-      // تسجيل المعاملة
+      // تسجيل المعاملة مع idempotency_key
       const { data: transaction, error: txError } = await supabaseAdmin
         .from("wallet_transactions")
         .insert({
@@ -215,6 +236,7 @@ export const walletRouter = router({
           description,
           reference_type,
           reference_id: reference_id || null,
+          idempotency_key: idempotency_key || null,
           created_by: ctx.user.id,
         })
         .select()
