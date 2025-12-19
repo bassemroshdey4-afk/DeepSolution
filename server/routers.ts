@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { superAdminRouter } from "./superAdminRouter";
 import { walletRouter } from "./walletRouter";
+import { aiAddonsRouter } from "./aiAddonsRouter";
 import { publicProcedure, protectedProcedure, router, tenantProcedure } from "./_core/trpc";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
@@ -15,6 +16,7 @@ export const appRouter = router({
   system: systemRouter,
   superAdmin: superAdminRouter,
   wallet: walletRouter,
+  aiAddons: aiAddonsRouter,
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),

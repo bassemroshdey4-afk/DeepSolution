@@ -193,3 +193,30 @@
 - [x] تجاوز Super Admin للرصيد السالب (عبر wallet.adminAdjust)
 - [x] تسجيل المعاملة في wallet_transactions
 - [x] اختبارات Vitest (13 اختبار)
+
+
+## AI Add-ons Billing + Usage Tracking (MVP) ✅
+- [x] إنشاء جدول ai_addons (الكتالوج)
+- [x] إنشاء جدول tenant_ai_subscriptions (اشتراكات المستأجرين)
+- [x] إنشاء جدول ai_usage_logs (سجل الاستخدام)
+- [x] API: قائمة الإضافات المتاحة
+- [x] API: تفعيل إضافة (خصم من المحفظة)
+- [x] API: تجديد إضافة
+- [x] API: تسجيل استخدام (مع التحقق من الحدود)
+- [x] API: Super Admin - تفعيل بدون رسوم
+- [x] API: Super Admin - تعديل الاستخدام المتبقي
+- [x] منطق الفترة التجريبية (قابل للتكوين)
+- [x] صفحة AI Add-ons في Dashboard
+- [x] اختبارات Vitest (17 اختبار)
+
+
+## Content Writer AI Feature (End-to-End) ✅
+- [x] إنشاء API: aiAddons.generateContent
+- [x] التحقق من تفعيل الإضافة
+- [x] التحقق من usage_remaining
+- [x] خصم الاستخدام
+- [x] تسجيل الاستخدام في ai_usage_logs
+- [x] استدعاء OpenAI API (عبر invokeLLM)
+- [x] إرجاع المحتوى المولد
+- [x] واجهة Content Writer بسيطة (/content-writer)
+- [x] اختبار التدفق الكامل (10 اختبارات)
