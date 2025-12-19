@@ -5,26 +5,75 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, Sparkles, Target, FileText, Megaphone, ChevronRight, CheckCircle2 } from "lucide-react";
+import { Loader2, Sparkles, Target, FileText, Megaphone, ChevronRight, CheckCircle2, AlertCircle, RefreshCw, Zap } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+type StepStatus = "pending" | "running" | "done" | "error";
+
+interface PipelineStep {
+  id: string;
+  icon: React.ElementType;
+  label: string;
+  description: string;
+  status: StepStatus;
+  fromCache?: boolean;
+  version?: number;
+}
 
 export default function AIPipeline() {
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [language, setLanguage] = useState<"ar" | "en">("ar");
+  const [forceRegenerate, setForceRegenerate] = useState(false);
   const [pipelineResult, setPipelineResult] = useState<any>(null);
-  const [currentStep, setCurrentStep] = useState<number>(0);
+  const [steps, setSteps] = useState<PipelineStep[]>([
+    { id: "select", icon: Target, label: "اختيار المنتج", description: "حدد المنتج للتحليل", status: "pending" },
+    { id: "intelligence", icon: Sparkles, label: "ذكاء المنتج", description: "تحليل وفهم المنتج", status: "pending" },
+    { id: "landing", icon: FileText, label: "صفحة الهبوط", description: "توليد محتوى الصفحة", status: "pending" },
+    { id: "ads", icon: Megaphone, label: "إعلانات Meta", description: "إنشاء الحملة الإعلانية", status: "pending" },
+  ]);
 
   // Get products list
   const { data: products, isLoading: productsLoading } = trpc.products.list.useQuery();
 
+  // Get usage stats
+  const { data: usageStats } = trpc.aiPipeline.getUsageStats.useQuery();
+
+  // Individual stage mutations for retry functionality
+  const analyzeProductMutation = trpc.aiPipeline.analyzeProduct.useMutation();
+  const generateLandingMutation = trpc.aiPipeline.generateLandingPage.useMutation();
+  const generateAdsMutation = trpc.aiPipeline.generateMetaAds.useMutation();
+
   // Run full pipeline mutation
   const runPipelineMutation = trpc.aiPipeline.runFullPipeline.useMutation({
+    onMutate: () => {
+      setSteps(prev => prev.map((s, i) => ({
+        ...s,
+        status: i === 0 ? "done" : i === 1 ? "running" : "pending"
+      })));
+    },
     onSuccess: (data) => {
       setPipelineResult(data);
-      setCurrentStep(4);
+      setSteps(prev => prev.map(s => ({
+        ...s,
+        status: "done",
+        fromCache: s.id === "intelligence" ? data.intelligence.fromCache :
+                  s.id === "landing" ? data.landingPage.fromCache :
+                  s.id === "ads" ? data.metaAds.fromCache : undefined,
+        version: s.id === "intelligence" ? data.intelligence.version :
+                 s.id === "landing" ? data.landingPage.version :
+                 s.id === "ads" ? data.metaAds.version : undefined,
+      })));
       toast.success("تم إكمال خط الأنابيب بنجاح!");
     },
     onError: (error) => {
+      const errorStep = steps.findIndex(s => s.status === "running");
+      setSteps(prev => prev.map((s, i) => ({
+        ...s,
+        status: i === errorStep ? "error" : s.status === "running" ? "pending" : s.status
+      })));
       toast.error(error.message);
     },
   });
@@ -34,45 +83,186 @@ export default function AIPipeline() {
       toast.error("يرجى اختيار منتج أولاً");
       return;
     }
-    setCurrentStep(1);
-    runPipelineMutation.mutate({ productId: selectedProductId, language });
+    
+    // Reset steps
+    setSteps(prev => prev.map((s, i) => ({
+      ...s,
+      status: i === 0 ? "done" : "pending",
+      fromCache: undefined,
+      version: undefined,
+    })));
+    setPipelineResult(null);
+    
+    runPipelineMutation.mutate({ 
+      productId: selectedProductId, 
+      language,
+      forceRegenerate 
+    });
   };
 
-  const steps = [
-    { icon: Target, label: "اختيار المنتج", description: "حدد المنتج للتحليل" },
-    { icon: Sparkles, label: "ذكاء المنتج", description: "تحليل وفهم المنتج" },
-    { icon: FileText, label: "صفحة الهبوط", description: "توليد محتوى الصفحة" },
-    { icon: Megaphone, label: "إعلانات Meta", description: "إنشاء الحملة الإعلانية" },
-  ];
+  const handleRetryStep = async (stepId: string) => {
+    if (!selectedProductId) return;
+
+    const stepIndex = steps.findIndex(s => s.id === stepId);
+    setSteps(prev => prev.map((s, i) => ({
+      ...s,
+      status: i === stepIndex ? "running" : s.status
+    })));
+
+    try {
+      if (stepId === "intelligence") {
+        const result = await analyzeProductMutation.mutateAsync({
+          productId: selectedProductId,
+          language,
+          forceRegenerate: true,
+        });
+        setPipelineResult((prev: any) => prev ? { ...prev, intelligence: { data: result.intelligence, version: result.version, fromCache: false } } : null);
+      } else if (stepId === "landing") {
+        const result = await generateLandingMutation.mutateAsync({
+          productId: selectedProductId,
+          language,
+          forceRegenerate: true,
+        });
+        setPipelineResult((prev: any) => prev ? { ...prev, landingPage: { data: result.content, version: result.version, fromCache: false } } : null);
+      } else if (stepId === "ads") {
+        const result = await generateAdsMutation.mutateAsync({
+          productId: selectedProductId,
+          language,
+          forceRegenerate: true,
+        });
+        setPipelineResult((prev: any) => prev ? { ...prev, metaAds: { data: result.content, version: result.version, fromCache: false } } : null);
+      }
+      
+      setSteps(prev => prev.map((s, i) => ({
+        ...s,
+        status: i === stepIndex ? "done" : s.status,
+        fromCache: i === stepIndex ? false : s.fromCache,
+      })));
+      toast.success("تم إعادة التوليد بنجاح!");
+    } catch (error: any) {
+      setSteps(prev => prev.map((s, i) => ({
+        ...s,
+        status: i === stepIndex ? "error" : s.status
+      })));
+      toast.error(error.message);
+    }
+  };
+
+  const getStepStatusIcon = (status: StepStatus) => {
+    switch (status) {
+      case "done":
+        return <CheckCircle2 className="h-5 w-5 text-green-600" />;
+      case "running":
+        return <Loader2 className="h-5 w-5 animate-spin text-primary" />;
+      case "error":
+        return <AlertCircle className="h-5 w-5 text-destructive" />;
+      default:
+        return null;
+    }
+  };
+
+  const getStepBgColor = (status: StepStatus) => {
+    switch (status) {
+      case "done":
+        return "bg-green-100";
+      case "running":
+        return "bg-primary/10";
+      case "error":
+        return "bg-destructive/10";
+      default:
+        return "bg-muted";
+    }
+  };
+
+  // Calculate remaining usage
+  const getRemainingUsage = (slug: string) => {
+    const sub = usageStats?.subscriptions?.find((s: any) => s.ai_addons?.slug === slug);
+    return sub?.usage_remaining ?? 0;
+  };
+
+  const hasEnoughUsage = () => {
+    return (
+      getRemainingUsage("product-intelligence") > 0 &&
+      getRemainingUsage("landing-page-generator") > 0 &&
+      getRemainingUsage("meta-ads-generator") > 0
+    );
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="p-2 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-lg">
-          <Sparkles className="h-6 w-6 text-purple-600" />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-lg">
+            <Sparkles className="h-6 w-6 text-purple-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">خط أنابيب التسويق الذكي</h1>
+            <p className="text-muted-foreground">من المنتج إلى الحملة الإعلانية في خطوة واحدة</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold">خط أنابيب التسويق الذكي</h1>
-          <p className="text-muted-foreground">من المنتج إلى الحملة الإعلانية في خطوة واحدة</p>
+        
+        {/* Usage Stats */}
+        <div className="flex gap-2">
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Zap className="h-3 w-3" />
+            ذكاء: {getRemainingUsage("product-intelligence")}
+          </Badge>
+          <Badge variant="outline" className="flex items-center gap-1">
+            <FileText className="h-3 w-3" />
+            صفحات: {getRemainingUsage("landing-page-generator")}
+          </Badge>
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Megaphone className="h-3 w-3" />
+            إعلانات: {getRemainingUsage("meta-ads-generator")}
+          </Badge>
         </div>
       </div>
+
+      {/* Usage Warning */}
+      {!hasEnoughUsage() && usageStats && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>رصيد غير كافٍ</AlertTitle>
+          <AlertDescription>
+            يجب تفعيل جميع إضافات AI (ذكاء المنتج، صفحات الهبوط، إعلانات Meta) لتشغيل خط الأنابيب.
+            <Button variant="link" className="p-0 h-auto mr-2" onClick={() => window.location.href = "/ai-addons"}>
+              تفعيل الإضافات
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Steps Progress */}
       <div className="flex items-center justify-between bg-muted/30 rounded-lg p-4">
         {steps.map((step, index) => (
-          <div key={index} className="flex items-center">
-            <div className={`flex items-center gap-2 ${currentStep > index ? 'text-green-600' : currentStep === index ? 'text-primary' : 'text-muted-foreground'}`}>
-              <div className={`p-2 rounded-full ${currentStep > index ? 'bg-green-100' : currentStep === index ? 'bg-primary/10' : 'bg-muted'}`}>
-                {currentStep > index ? (
-                  <CheckCircle2 className="h-5 w-5" />
-                ) : (
-                  <step.icon className="h-5 w-5" />
-                )}
+          <div key={step.id} className="flex items-center">
+            <div className={`flex items-center gap-2 ${
+              step.status === "done" ? "text-green-600" : 
+              step.status === "running" ? "text-primary" : 
+              step.status === "error" ? "text-destructive" : 
+              "text-muted-foreground"
+            }`}>
+              <div className={`p-2 rounded-full ${getStepBgColor(step.status)}`}>
+                {getStepStatusIcon(step.status) || <step.icon className="h-5 w-5" />}
               </div>
               <div className="hidden md:block">
-                <p className="font-medium text-sm">{step.label}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-sm">{step.label}</p>
+                  {step.fromCache && <Badge variant="secondary" className="text-xs">من الذاكرة</Badge>}
+                  {step.version && <Badge variant="outline" className="text-xs">v{step.version}</Badge>}
+                </div>
                 <p className="text-xs text-muted-foreground">{step.description}</p>
               </div>
+              {step.status === "error" && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => handleRetryStep(step.id)}
+                  disabled={analyzeProductMutation.isPending || generateLandingMutation.isPending || generateAdsMutation.isPending}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              )}
             </div>
             {index < steps.length - 1 && (
               <ChevronRight className="h-5 w-5 mx-4 text-muted-foreground" />
@@ -81,32 +271,26 @@ export default function AIPipeline() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Input Panel */}
-        <Card>
-          <CardHeader>
-            <CardTitle>إعدادات الحملة</CardTitle>
-            <CardDescription>اختر المنتج واللغة لبدء التوليد</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      {/* Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>إعدادات خط الأنابيب</CardTitle>
+          <CardDescription>اختر المنتج واللغة لبدء التحليل والتوليد</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>المنتج</Label>
               <Select value={selectedProductId} onValueChange={setSelectedProductId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="اختر منتجاً..." />
+                  <SelectValue placeholder={productsLoading ? "جاري التحميل..." : "اختر منتجاً"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {productsLoading ? (
-                    <SelectItem value="loading" disabled>جاري التحميل...</SelectItem>
-                  ) : products && products.length > 0 ? (
-                    products.map((product: any) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.name} - {product.price} ر.س
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="empty" disabled>لا توجد منتجات</SelectItem>
-                  )}
+                  {products?.map((product: any) => (
+                    <SelectItem key={product.id} value={product.id}>
+                      {product.name} - {product.price} ر.س
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -124,156 +308,143 @@ export default function AIPipeline() {
               </Select>
             </div>
 
-            <Button
-              onClick={handleRunPipeline}
-              disabled={runPipelineMutation.isPending || !selectedProductId}
-              className="w-full"
-              size="lg"
-            >
-              {runPipelineMutation.isPending ? (
-                <>
-                  <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                  جاري التوليد...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="ml-2 h-4 w-4" />
-                  تشغيل خط الأنابيب الكامل
-                </>
-              )}
-            </Button>
-
-            {runPipelineMutation.isPending && (
-              <div className="text-center text-sm text-muted-foreground">
-                <p>يتم الآن تحليل المنتج وتوليد المحتوى...</p>
-                <p>قد يستغرق هذا 30-60 ثانية</p>
+            <div className="space-y-2">
+              <Label>خيارات</Label>
+              <div className="flex items-center gap-2 h-10">
+                <Switch 
+                  id="force-regenerate" 
+                  checked={forceRegenerate}
+                  onCheckedChange={setForceRegenerate}
+                />
+                <Label htmlFor="force-regenerate" className="text-sm font-normal">
+                  إعادة التوليد (تجاهل الذاكرة)
+                </Label>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          </div>
 
-        {/* Results Panel */}
+          <Button 
+            onClick={handleRunPipeline} 
+            disabled={!selectedProductId || runPipelineMutation.isPending || !hasEnoughUsage()}
+            className="w-full"
+          >
+            {runPipelineMutation.isPending ? (
+              <>
+                <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                جاري التنفيذ...
+              </>
+            ) : (
+              <>
+                <Sparkles className="ml-2 h-4 w-4" />
+                تشغيل خط الأنابيب الكامل
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Results */}
+      {pipelineResult && (
         <Card>
           <CardHeader>
-            <CardTitle>النتائج</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              نتائج خط الأنابيب - {pipelineResult.productName}
+            </CardTitle>
             <CardDescription>
-              {pipelineResult ? `تم توليد المحتوى لـ "${pipelineResult.productName}"` : "ستظهر النتائج هنا"}
+              إجمالي التوكنات المستخدمة: {pipelineResult.totalTokensUsed}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {pipelineResult ? (
-              <Tabs defaultValue="intelligence" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="intelligence">ذكاء المنتج</TabsTrigger>
-                  <TabsTrigger value="landing">صفحة الهبوط</TabsTrigger>
-                  <TabsTrigger value="ads">الإعلانات</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="intelligence" className="mt-4">
-                  <div className="space-y-3 text-sm">
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium">الفئة:</p>
-                      <p>{pipelineResult.intelligence?.category}</p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium">الجمهور المستهدف:</p>
-                      <p>{pipelineResult.intelligence?.targetAudience?.demographics}</p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium">نقاط البيع:</p>
-                      <ul className="list-disc list-inside">
-                        {pipelineResult.intelligence?.uniqueSellingPoints?.map((usp: string, i: number) => (
-                          <li key={i}>{usp}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium">الكلمات المفتاحية:</p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {pipelineResult.intelligence?.keywords?.map((kw: string, i: number) => (
-                          <span key={i} className="px-2 py-0.5 bg-primary/10 rounded text-xs">{kw}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </TabsContent>
+            <Tabs defaultValue="intelligence">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="intelligence">
+                  ذكاء المنتج
+                  {pipelineResult.intelligence.fromCache && <Badge variant="secondary" className="mr-2 text-xs">ذاكرة</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="landing">
+                  صفحة الهبوط
+                  {pipelineResult.landingPage.fromCache && <Badge variant="secondary" className="mr-2 text-xs">ذاكرة</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="ads">
+                  إعلانات Meta
+                  {pipelineResult.metaAds.fromCache && <Badge variant="secondary" className="mr-2 text-xs">ذاكرة</Badge>}
+                </TabsTrigger>
+              </TabsList>
 
-                <TabsContent value="landing" className="mt-4">
-                  <div className="space-y-3 text-sm">
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium">العنوان الرئيسي:</p>
-                      <p className="text-lg font-bold">{pipelineResult.landingPage?.headline}</p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium">العنوان الفرعي:</p>
-                      <p>{pipelineResult.landingPage?.subheadline}</p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium">زر الإجراء:</p>
-                      <Button size="sm" className="mt-1">{pipelineResult.landingPage?.ctaText}</Button>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium">الفوائد:</p>
-                      <ul className="list-disc list-inside">
-                        {pipelineResult.landingPage?.benefits?.map((b: string, i: number) => (
-                          <li key={i}>{b}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="ads" className="mt-4">
-                  <div className="space-y-3 text-sm">
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium">هدف الحملة:</p>
-                      <p>{pipelineResult.metaAds?.campaignObjective}</p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium">Hooks:</p>
-                      <ul className="list-disc list-inside">
-                        {pipelineResult.metaAds?.hooks?.slice(0, 3).map((h: string, i: number) => (
-                          <li key={i}>{h}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    {pipelineResult.metaAds?.adCopies?.map((ad: any, i: number) => (
-                      <div key={i} className="p-3 bg-muted/50 rounded-lg">
-                        <p className="font-medium">إعلان {i + 1}:</p>
-                        <p className="font-bold">{ad.headline}</p>
-                        <p className="text-muted-foreground">{ad.primaryText}</p>
-                        <Button size="sm" variant="outline" className="mt-2">{ad.callToAction}</Button>
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            ) : (
-              <div className="flex items-center justify-center h-64 text-muted-foreground">
-                <div className="text-center space-y-2">
-                  <Sparkles className="h-12 w-12 mx-auto opacity-20" />
-                  <p>اختر منتجاً واضغط "تشغيل خط الأنابيب"</p>
+              <TabsContent value="intelligence" className="mt-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-semibold">ذكاء المنتج (الإصدار {pipelineResult.intelligence.version})</h3>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleRetryStep("intelligence")}
+                    disabled={analyzeProductMutation.isPending}
+                  >
+                    <RefreshCw className={`h-4 w-4 ml-2 ${analyzeProductMutation.isPending ? 'animate-spin' : ''}`} />
+                    إعادة التحليل
+                  </Button>
                 </div>
-              </div>
-            )}
+                <pre className="bg-muted p-4 rounded-lg overflow-auto text-sm max-h-96" dir="ltr">
+                  {JSON.stringify(pipelineResult.intelligence.data, null, 2)}
+                </pre>
+              </TabsContent>
+
+              <TabsContent value="landing" className="mt-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-semibold">محتوى صفحة الهبوط (الإصدار {pipelineResult.landingPage.version})</h3>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleRetryStep("landing")}
+                    disabled={generateLandingMutation.isPending}
+                  >
+                    <RefreshCw className={`h-4 w-4 ml-2 ${generateLandingMutation.isPending ? 'animate-spin' : ''}`} />
+                    إعادة التوليد
+                  </Button>
+                </div>
+                <pre className="bg-muted p-4 rounded-lg overflow-auto text-sm max-h-96" dir="ltr">
+                  {JSON.stringify(pipelineResult.landingPage.data, null, 2)}
+                </pre>
+              </TabsContent>
+
+              <TabsContent value="ads" className="mt-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-semibold">حملة Meta الإعلانية (الإصدار {pipelineResult.metaAds.version})</h3>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleRetryStep("ads")}
+                    disabled={generateAdsMutation.isPending}
+                  >
+                    <RefreshCw className={`h-4 w-4 ml-2 ${generateAdsMutation.isPending ? 'animate-spin' : ''}`} />
+                    إعادة التوليد
+                  </Button>
+                </div>
+                {pipelineResult.metaAds.campaignId && (
+                  <p className="text-sm text-muted-foreground mb-2">
+                    تم حفظ الحملة في قاعدة البيانات (ID: {pipelineResult.metaAds.campaignId})
+                  </p>
+                )}
+                <pre className="bg-muted p-4 rounded-lg overflow-auto text-sm max-h-96" dir="ltr">
+                  {JSON.stringify(pipelineResult.metaAds.data, null, 2)}
+                </pre>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
-      </div>
+      )}
 
-      {/* Token Usage */}
-      {pipelineResult && (
+      {/* Empty State */}
+      {!pipelineResult && !runPipelineMutation.isPending && products?.length === 0 && (
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">إجمالي التوكنات المستخدمة:</span>
-              <span className="font-mono">{pipelineResult.totalTokensUsed?.toLocaleString()}</span>
-            </div>
-            {pipelineResult.campaignId && (
-              <div className="flex items-center justify-between text-sm mt-2">
-                <span className="text-muted-foreground">معرف الحملة:</span>
-                <span className="font-mono text-xs">{pipelineResult.campaignId}</span>
-              </div>
-            )}
+          <CardContent className="py-12 text-center">
+            <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">لا توجد منتجات</h3>
+            <p className="text-muted-foreground mb-4">أضف منتجاً أولاً لتشغيل خط الأنابيب</p>
+            <Button onClick={() => window.location.href = "/products"}>
+              إضافة منتج
+            </Button>
           </CardContent>
         </Card>
       )}

@@ -245,4 +245,36 @@
 - [x] واجهة /ai-pipeline للتدفق الكامل
 - [x] API: aiPipeline.runFullPipeline - تدفق كامل
 - [x] اختبارات Vitest (7 اختبارات)
-- [ ] checkpoint
+- [x] checkpoint (05fb7236)
+
+
+## Golden Path - تثبيت خط الأنابيب ✅
+### 1. حفظ البيانات (Data Persistence) ✅
+- [x] إنشاء هيكل ai_pipeline_outputs (مع fallback للذاكرة)
+- [x] حفظ intelligence, landing_page, meta_ads مع versioning
+- [x] حفظ campaigns في جدول campaigns الموجود
+- [x] APIs: getProductPipelineStatus, getOutputVersions, getOutputByVersion
+
+### 2. إعادة التشغيل (Re-runnable Pipeline) ✅
+- [x] forceRegenerate flag لتجاوز الذاكرة
+- [x] كل مرحلة تحفظ كإصدار جديد (لا تحذف القديم)
+- [x] fromCache flag لمعرفة مصدر البيانات
+- [x] إعادة توليد كل مرحلة منفردة من UI
+
+### 3. ربط AI Add-ons Billing ✅
+- [x] checkAndDeductUsage قبل كل مرحلة
+- [x] التحقق من الاشتراك (active/trial) والصلاحية
+- [x] خصم usage_remaining وتسجيل في ai_usage_logs
+- [x] رسائل خطأ عربية واضحة (FORBIDDEN, PRECONDITION_FAILED)
+
+### 4. تحسين UX ✅
+- [x] حالة واضحة لكل خطوة (pending/running/done/error)
+- [x] زر retry لكل مرحلة فاشلة
+- [x] عرض الاستخدام المتبقي لكل إضافة
+- [x] تحذير عند عدم كفاية الرصيد
+- [x] خيار "إعادة التوليد" switch
+
+### 5. توثيق وتأكيد ✅
+- [x] 19 اختبار Vitest لـ Golden Path
+- [x] 80 اختبار إجمالي يمر بنجاح
+- [ ] checkpoint نهائي

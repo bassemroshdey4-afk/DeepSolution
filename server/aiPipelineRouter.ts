@@ -5,121 +5,266 @@ import { supabaseAdmin } from "./supabase";
 import { invokeLLM } from "./_core/llm";
 
 // ============================================
-// AI Pipeline Router - Works with existing Supabase tables
+// AI Pipeline Router - Golden Path
 // ============================================
-// Tables used:
-// - products: source of product data, stores ai_intelligence in metadata
-// - campaigns: stores generated ad content
-// - ai_usage_logs: tracks AI usage
-// - tenant_ai_subscriptions: checks addon activation
+// Data persistence:
+// - Product Intelligence → stored in ai_pipeline_outputs (type: 'intelligence')
+// - Landing Page → stored in ai_pipeline_outputs (type: 'landing_page')
+// - Meta Ads → stored in ai_pipeline_outputs (type: 'meta_ads') + campaigns table
+// 
+// All outputs are versioned and never overwritten.
+// Each stage checks AI Add-on subscription and deducts usage.
 // ============================================
 
-// Product Intelligence Add-on ID (from ai_addons table)
-const PRODUCT_INTELLIGENCE_ADDON_ID = "a1b2c3d4-1111-2222-3333-444455556666";
-const LANDING_PAGE_ADDON_ID = "b2c3d4e5-2222-3333-4444-555566667777";
-const META_ADS_ADDON_ID = "c3d4e5f6-3333-4444-5555-666677778888";
+// AI Add-on IDs (must match ai_addons table)
+const AI_ADDON_IDS = {
+  PRODUCT_INTELLIGENCE: "product-intelligence",
+  LANDING_PAGE: "landing-page-generator", 
+  META_ADS: "meta-ads-generator",
+};
 
-// Helper: Check addon is active and has usage
-async function checkAddonUsage(tenantId: string, addonId: string): Promise<{ subscriptionId: string; usageRemaining: number }> {
-  const { data: sub, error } = await supabaseAdmin
+// ============================================
+// Helper: Check addon subscription and usage
+// ============================================
+async function checkAndDeductUsage(
+  tenantId: string,
+  addonSlug: string,
+  action: string,
+  metadata: Record<string, unknown>
+): Promise<{ subscriptionId: string; addonId: string }> {
+  // 1. Find the addon by slug
+  const { data: addon, error: addonError } = await supabaseAdmin
+    .from("ai_addons")
+    .select("id, name")
+    .eq("slug", addonSlug)
+    .single();
+
+  if (addonError || !addon) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: `الإضافة "${addonSlug}" غير موجودة في النظام`,
+    });
+  }
+
+  // 2. Check subscription
+  const { data: subscription, error: subError } = await supabaseAdmin
     .from("tenant_ai_subscriptions")
     .select("*")
     .eq("tenant_id", tenantId)
-    .eq("ai_addon_id", addonId)
+    .eq("ai_addon_id", addon.id)
     .in("status", ["active", "trial"])
     .single();
 
-  if (error || !sub) {
+  if (subError || !subscription) {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "يجب تفعيل الإضافة المطلوبة لاستخدام هذه الميزة",
+      message: `يجب تفعيل إضافة "${addon.name}" لاستخدام هذه الميزة. اذهب إلى صفحة إضافات AI.`,
     });
   }
 
-  if (sub.expires_at && new Date(sub.expires_at) < new Date()) {
+  // 3. Check expiry
+  if (subscription.expires_at && new Date(subscription.expires_at) < new Date()) {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "انتهت صلاحية الاشتراك. يرجى التجديد.",
+      message: `انتهت صلاحية اشتراك "${addon.name}". يرجى التجديد.`,
     });
   }
 
-  if (sub.usage_remaining < 1) {
+  // 4. Check usage remaining
+  if (subscription.usage_remaining < 1) {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "استنفدت حد الاستخدام. يرجى الترقية.",
+      message: `استنفدت حد استخدام "${addon.name}". يرجى الترقية أو شراء المزيد.`,
     });
   }
 
-  return { subscriptionId: sub.id, usageRemaining: sub.usage_remaining };
-}
-
-// Helper: Deduct usage and log
-async function recordAIUsage(
-  tenantId: string,
-  subscriptionId: string,
-  addonId: string,
-  action: string,
-  tokensUsed: number,
-  metadata: Record<string, unknown>
-) {
-  // Deduct usage
-  await supabaseAdmin
+  // 5. Deduct usage
+  const { error: updateError } = await supabaseAdmin
     .from("tenant_ai_subscriptions")
-    .update({ usage_remaining: 0 })
-    .eq("id", subscriptionId);
+    .update({ 
+      usage_remaining: subscription.usage_remaining - 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", subscription.id);
 
-  // Actually deduct - need to get current and subtract
-  const { data: current } = await supabaseAdmin
-    .from("tenant_ai_subscriptions")
-    .select("usage_remaining")
-    .eq("id", subscriptionId)
-    .single();
-
-  if (current) {
-    await supabaseAdmin
-      .from("tenant_ai_subscriptions")
-      .update({ usage_remaining: current.usage_remaining - 1 })
-      .eq("id", subscriptionId);
+  if (updateError) {
+    console.error("Error deducting usage:", updateError);
   }
 
-  // Log usage
+  // 6. Log usage
   await supabaseAdmin.from("ai_usage_logs").insert({
     tenant_id: tenantId,
-    ai_addon_id: addonId,
-    subscription_id: subscriptionId,
+    ai_addon_id: addon.id,
+    subscription_id: subscription.id,
     action,
     units_used: 1,
-    metadata: { ...metadata, tokens_used: tokensUsed },
+    metadata,
   });
+
+  return { subscriptionId: subscription.id, addonId: addon.id };
+}
+
+// ============================================
+// In-memory storage for pipeline outputs (fallback when table doesn't exist)
+// In production, this should be persisted to a proper table
+// ============================================
+const pipelineOutputsCache = new Map<string, { content: unknown; version: number; metadata: Record<string, unknown>; createdAt: Date }[]>();
+
+function getCacheKey(tenantId: string, productId: string, outputType: string): string {
+  return `${tenantId}:${productId}:${outputType}`;
+}
+
+// ============================================
+// Helper: Save pipeline output (versioned)
+// ============================================
+async function savePipelineOutput(
+  tenantId: string,
+  productId: string,
+  outputType: "intelligence" | "landing_page" | "meta_ads",
+  content: unknown,
+  metadata: Record<string, unknown> = {}
+): Promise<string> {
+  // Try to save to ai_pipeline_outputs table first
+  try {
+    // Get current version count
+    const { count } = await supabaseAdmin
+      .from("ai_pipeline_outputs")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("product_id", productId)
+      .eq("output_type", outputType);
+
+    const version = (count || 0) + 1;
+
+    // Insert new version
+    const { data, error } = await supabaseAdmin
+      .from("ai_pipeline_outputs")
+      .insert({
+        tenant_id: tenantId,
+        product_id: productId,
+        output_type: outputType,
+        version,
+        content,
+        metadata,
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      return data.id;
+    }
+  } catch {
+    // Table doesn't exist, use fallback
+  }
+
+  // Fallback: use in-memory cache
+  const key = getCacheKey(tenantId, productId, outputType);
+  const existing = pipelineOutputsCache.get(key) || [];
+  const version = existing.length + 1;
+  
+  existing.push({
+    content,
+    version,
+    metadata,
+    createdAt: new Date(),
+  });
+  
+  pipelineOutputsCache.set(key, existing);
+  console.log(`[Pipeline] Saved ${outputType} v${version} for product ${productId} (in-memory)`);
+  
+  return `cache:${version}`;
+}
+
+// ============================================
+// Helper: Get latest pipeline output
+// ============================================
+async function getLatestOutput(
+  tenantId: string,
+  productId: string,
+  outputType: "intelligence" | "landing_page" | "meta_ads"
+): Promise<{ content: unknown; version: number } | null> {
+  // Try database first
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("ai_pipeline_outputs")
+      .select("content, version")
+      .eq("tenant_id", tenantId)
+      .eq("product_id", productId)
+      .eq("output_type", outputType)
+      .order("version", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!error && data) {
+      return { content: data.content, version: data.version };
+    }
+  } catch {
+    // Table doesn't exist
+  }
+
+  // Fallback: check in-memory cache
+  const key = getCacheKey(tenantId, productId, outputType);
+  const cached = pipelineOutputsCache.get(key);
+  
+  if (cached && cached.length > 0) {
+    const latest = cached[cached.length - 1];
+    return { content: latest.content, version: latest.version };
+  }
+
+  return null;
 }
 
 export const aiPipelineRouter = router({
   // ============================================
-  // Step 1: Analyze Product from existing products table
+  // Step 1: Analyze Product → Product Intelligence
   // ============================================
   analyzeProduct: tenantProcedure
     .input(z.object({
       productId: z.string().uuid(),
       language: z.enum(["ar", "en"]).optional().default("ar"),
+      forceRegenerate: z.boolean().optional().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
+      const { productId, language, forceRegenerate } = input;
+      const tenantId = ctx.tenantId;
+
       // 1. Get product from Supabase
       const { data: product, error: productError } = await supabaseAdmin
         .from("products")
         .select("*")
-        .eq("id", input.productId)
-        .eq("tenant_id", ctx.user.tenantId)
+        .eq("id", productId)
+        .eq("tenant_id", tenantId)
         .single();
 
       if (productError || !product) {
         throw new TRPCError({ code: "NOT_FOUND", message: "المنتج غير موجود" });
       }
 
-      // 2. Check addon usage (skip for now - use free tier)
-      // const { subscriptionId, usageRemaining } = await checkAddonUsage(ctx.user.tenantId, PRODUCT_INTELLIGENCE_ADDON_ID);
+      // 2. Check if we have existing intelligence (unless force regenerate)
+      if (!forceRegenerate) {
+        const existing = await getLatestOutput(tenantId, productId, "intelligence");
+        if (existing) {
+          return {
+            productId,
+            productName: product.name,
+            intelligence: existing.content,
+            version: existing.version,
+            fromCache: true,
+            tokensUsed: 0,
+          };
+        }
+      }
 
-      // 3. Generate intelligence using LLM
-      const isArabic = input.language === "ar";
+      // 3. Check and deduct usage
+      const { addonId } = await checkAndDeductUsage(
+        tenantId,
+        AI_ADDON_IDS.PRODUCT_INTELLIGENCE,
+        "analyze_product",
+        { product_id: productId, language }
+      );
+
+      // 4. Generate intelligence using LLM
+      const isArabic = language === "ar";
       
       const systemPrompt = isArabic
         ? `أنت خبير تسويق ومحلل منتجات. قم بتحليل المنتج وأنشئ ملف ذكاء منتج شامل. أجب بصيغة JSON فقط.`
@@ -133,13 +278,14 @@ export const aiPipelineRouter = router({
 
 أنشئ ملف ذكاء يتضمن:
 1. category (الفئة)
-2. targetAudience: { demographics, interests[], painPoints[] }
-3. uniqueSellingPoints[] (3-5 نقاط)
-4. pricingRange (budget/mid-range/premium/luxury)
-5. toneOfVoice (professional/casual/playful/luxury/urgent/friendly)
-6. visualStyle: { primaryColors[], style, imagery }
-7. keywords[] (للإعلانات)
-8. competitiveAdvantage`
+2. subcategory (الفئة الفرعية)
+3. targetAudience: { demographics, interests[], painPoints[] }
+4. uniqueSellingPoints[] (3-5 نقاط)
+5. pricingRange (budget/mid-range/premium/luxury)
+6. toneOfVoice (professional/casual/playful/luxury/urgent/friendly)
+7. visualStyle: { primaryColors[], style, imagery }
+8. keywords[] (للإعلانات)
+9. competitiveAdvantage`
         : `Analyze this product:
 Name: ${product.name}
 Description: ${product.description || "N/A"}
@@ -147,13 +293,14 @@ Price: ${product.price}
 
 Create intelligence profile with:
 1. category
-2. targetAudience: { demographics, interests[], painPoints[] }
-3. uniqueSellingPoints[] (3-5 points)
-4. pricingRange (budget/mid-range/premium/luxury)
-5. toneOfVoice (professional/casual/playful/luxury/urgent/friendly)
-6. visualStyle: { primaryColors[], style, imagery }
-7. keywords[] (for ads)
-8. competitiveAdvantage`;
+2. subcategory
+3. targetAudience: { demographics, interests[], painPoints[] }
+4. uniqueSellingPoints[] (3-5 points)
+5. pricingRange (budget/mid-range/premium/luxury)
+6. toneOfVoice (professional/casual/playful/luxury/urgent/friendly)
+7. visualStyle: { primaryColors[], style, imagery }
+8. keywords[] (for ads)
+9. competitiveAdvantage`;
 
       const result = await invokeLLM({
         messages: [
@@ -169,6 +316,7 @@ Create intelligence profile with:
               type: "object",
               properties: {
                 category: { type: "string" },
+                subcategory: { type: "string" },
                 targetAudience: {
                   type: "object",
                   properties: {
@@ -195,7 +343,7 @@ Create intelligence profile with:
                 keywords: { type: "array", items: { type: "string" } },
                 competitiveAdvantage: { type: "string" },
               },
-              required: ["category", "targetAudience", "uniqueSellingPoints", "pricingRange", "toneOfVoice", "visualStyle", "keywords", "competitiveAdvantage"],
+              required: ["category", "subcategory", "targetAudience", "uniqueSellingPoints", "pricingRange", "toneOfVoice", "visualStyle", "keywords", "competitiveAdvantage"],
               additionalProperties: false,
             },
           },
@@ -209,54 +357,86 @@ Create intelligence profile with:
 
       const intelligence = JSON.parse(typeof content === 'string' ? content : JSON.stringify(content));
 
-      // 4. Save intelligence back to product (in a metadata field or separate column)
-      // Since products table might not have ai_intelligence column, we'll store in description or create new approach
-      // For now, we'll return and let the caller decide
-      
-      // Log usage
-      await supabaseAdmin.from("ai_usage_logs").insert({
-        tenant_id: ctx.user.tenantId,
-        ai_addon_id: PRODUCT_INTELLIGENCE_ADDON_ID,
-        action: "analyze_product",
-        units_used: 1,
-        metadata: {
-          product_id: input.productId,
-          tokens_used: result.usage?.total_tokens || 0,
-        },
+      // 5. Save output (versioned)
+      await savePipelineOutput(tenantId, productId, "intelligence", intelligence, {
+        tokens_used: result.usage?.total_tokens || 0,
+        language,
       });
 
+      // 6. Get version
+      const saved = await getLatestOutput(tenantId, productId, "intelligence");
+
       return {
-        productId: input.productId,
+        productId,
         productName: product.name,
         intelligence,
+        version: saved?.version || 1,
+        fromCache: false,
         tokensUsed: result.usage?.total_tokens || 0,
       };
     }),
 
   // ============================================
-  // Step 2: Generate Landing Page Content
+  // Step 2: Generate Landing Page
   // ============================================
   generateLandingPage: tenantProcedure
     .input(z.object({
       productId: z.string().uuid(),
-      intelligence: z.any(), // Product intelligence object
       language: z.enum(["ar", "en"]).optional().default("ar"),
+      forceRegenerate: z.boolean().optional().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { productId, intelligence, language } = input;
-      const isArabic = language === "ar";
+      const { productId, language, forceRegenerate } = input;
+      const tenantId = ctx.tenantId;
 
-      // Get product name
+      // 1. Get product
       const { data: product } = await supabaseAdmin
         .from("products")
-        .select("name, price, image_url")
+        .select("name, price, description, image_url")
         .eq("id", productId)
-        .eq("tenant_id", ctx.user.tenantId)
+        .eq("tenant_id", tenantId)
         .single();
 
       if (!product) {
         throw new TRPCError({ code: "NOT_FOUND", message: "المنتج غير موجود" });
       }
+
+      // 2. Get product intelligence (required)
+      const intelligenceOutput = await getLatestOutput(tenantId, productId, "intelligence");
+      if (!intelligenceOutput) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "يجب تحليل المنتج أولاً (Product Intelligence)",
+        });
+      }
+      const intelligence = intelligenceOutput.content as Record<string, unknown>;
+
+      // 3. Check cache
+      if (!forceRegenerate) {
+        const existing = await getLatestOutput(tenantId, productId, "landing_page");
+        if (existing) {
+          return {
+            productId,
+            content: existing.content,
+            version: existing.version,
+            fromCache: true,
+            tokensUsed: 0,
+          };
+        }
+      }
+
+      // 4. Check and deduct usage
+      await checkAndDeductUsage(
+        tenantId,
+        AI_ADDON_IDS.LANDING_PAGE,
+        "generate_landing_page",
+        { product_id: productId, language }
+      );
+
+      // 5. Generate landing page
+      const isArabic = language === "ar";
+      const targetAudience = intelligence.targetAudience as Record<string, unknown> | undefined;
+      const uniqueSellingPoints = intelligence.uniqueSellingPoints as string[] | undefined;
 
       const systemPrompt = isArabic
         ? `أنت خبير في تصميم صفحات الهبوط عالية التحويل. أنشئ محتوى صفحة هبوط كاملة. أجب بصيغة JSON فقط.`
@@ -268,8 +448,8 @@ Create intelligence profile with:
 المنتج: ${product.name}
 السعر: ${product.price}
 الفئة: ${intelligence.category}
-الجمهور: ${intelligence.targetAudience?.demographics}
-نقاط البيع: ${intelligence.uniqueSellingPoints?.join(", ")}
+الجمهور: ${targetAudience?.demographics || ""}
+نقاط البيع: ${uniqueSellingPoints?.join(", ") || ""}
 نبرة الصوت: ${intelligence.toneOfVoice}
 
 أنشئ:
@@ -286,8 +466,8 @@ Create intelligence profile with:
 Product: ${product.name}
 Price: ${product.price}
 Category: ${intelligence.category}
-Audience: ${intelligence.targetAudience?.demographics}
-USPs: ${intelligence.uniqueSellingPoints?.join(", ")}
+Audience: ${targetAudience?.demographics || ""}
+USPs: ${uniqueSellingPoints?.join(", ") || ""}
 Tone: ${intelligence.toneOfVoice}
 
 Create:
@@ -385,21 +565,20 @@ Create:
 
       const landingPageContent = JSON.parse(typeof content === 'string' ? content : JSON.stringify(content));
 
-      // Log usage
-      await supabaseAdmin.from("ai_usage_logs").insert({
-        tenant_id: ctx.user.tenantId,
-        ai_addon_id: LANDING_PAGE_ADDON_ID,
-        action: "generate_landing_page",
-        units_used: 1,
-        metadata: {
-          product_id: productId,
-          tokens_used: result.usage?.total_tokens || 0,
-        },
+      // 6. Save output
+      await savePipelineOutput(tenantId, productId, "landing_page", landingPageContent, {
+        tokens_used: result.usage?.total_tokens || 0,
+        language,
+        intelligence_version: intelligenceOutput.version,
       });
+
+      const saved = await getLatestOutput(tenantId, productId, "landing_page");
 
       return {
         productId,
         content: landingPageContent,
+        version: saved?.version || 1,
+        fromCache: false,
         tokensUsed: result.usage?.total_tokens || 0,
       };
     }),
@@ -410,24 +589,62 @@ Create:
   generateMetaAds: tenantProcedure
     .input(z.object({
       productId: z.string().uuid(),
-      intelligence: z.any(),
       language: z.enum(["ar", "en"]).optional().default("ar"),
+      forceRegenerate: z.boolean().optional().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { productId, intelligence, language } = input;
-      const isArabic = language === "ar";
+      const { productId, language, forceRegenerate } = input;
+      const tenantId = ctx.tenantId;
 
-      // Get product
+      // 1. Get product
       const { data: product } = await supabaseAdmin
         .from("products")
         .select("name, price, description, image_url")
         .eq("id", productId)
-        .eq("tenant_id", ctx.user.tenantId)
+        .eq("tenant_id", tenantId)
         .single();
 
       if (!product) {
         throw new TRPCError({ code: "NOT_FOUND", message: "المنتج غير موجود" });
       }
+
+      // 2. Get product intelligence (required)
+      const intelligenceOutput = await getLatestOutput(tenantId, productId, "intelligence");
+      if (!intelligenceOutput) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "يجب تحليل المنتج أولاً (Product Intelligence)",
+        });
+      }
+      const intelligence = intelligenceOutput.content as Record<string, unknown>;
+
+      // 3. Check cache
+      if (!forceRegenerate) {
+        const existing = await getLatestOutput(tenantId, productId, "meta_ads");
+        if (existing) {
+          return {
+            productId,
+            content: existing.content,
+            version: existing.version,
+            fromCache: true,
+            tokensUsed: 0,
+          };
+        }
+      }
+
+      // 4. Check and deduct usage
+      await checkAndDeductUsage(
+        tenantId,
+        AI_ADDON_IDS.META_ADS,
+        "generate_meta_ads",
+        { product_id: productId, language }
+      );
+
+      // 5. Generate Meta ads
+      const isArabic = language === "ar";
+      const targetAudience = intelligence.targetAudience as Record<string, unknown> | undefined;
+      const uniqueSellingPoints = intelligence.uniqueSellingPoints as string[] | undefined;
+      const keywords = intelligence.keywords as string[] | undefined;
 
       const systemPrompt = isArabic
         ? `أنت خبير إعلانات Meta ومشتري وسائط محترف. أنشئ حملة إعلانية كاملة. أجب بصيغة JSON فقط.`
@@ -438,11 +655,11 @@ Create:
 
 المنتج: ${product.name}
 السعر: ${product.price}
-الجمهور: ${intelligence.targetAudience?.demographics}
-الاهتمامات: ${intelligence.targetAudience?.interests?.join(", ")}
-نقاط الألم: ${intelligence.targetAudience?.painPoints?.join(", ")}
-نقاط البيع: ${intelligence.uniqueSellingPoints?.join(", ")}
-الكلمات المفتاحية: ${intelligence.keywords?.join(", ")}
+الجمهور: ${targetAudience?.demographics || ""}
+الاهتمامات: ${(targetAudience?.interests as string[])?.join(", ") || ""}
+نقاط الألم: ${(targetAudience?.painPoints as string[])?.join(", ") || ""}
+نقاط البيع: ${uniqueSellingPoints?.join(", ") || ""}
+الكلمات المفتاحية: ${keywords?.join(", ") || ""}
 
 أنشئ:
 1. campaignObjective (awareness/traffic/engagement/leads/conversions)
@@ -455,11 +672,11 @@ Create:
 
 Product: ${product.name}
 Price: ${product.price}
-Audience: ${intelligence.targetAudience?.demographics}
-Interests: ${intelligence.targetAudience?.interests?.join(", ")}
-Pain Points: ${intelligence.targetAudience?.painPoints?.join(", ")}
-USPs: ${intelligence.uniqueSellingPoints?.join(", ")}
-Keywords: ${intelligence.keywords?.join(", ")}
+Audience: ${targetAudience?.demographics || ""}
+Interests: ${(targetAudience?.interests as string[])?.join(", ") || ""}
+Pain Points: ${(targetAudience?.painPoints as string[])?.join(", ") || ""}
+USPs: ${uniqueSellingPoints?.join(", ") || ""}
+Keywords: ${keywords?.join(", ") || ""}
 
 Create:
 1. campaignObjective (awareness/traffic/engagement/leads/conversions)
@@ -563,13 +780,20 @@ Create:
 
       const metaAdsContent = JSON.parse(typeof content === 'string' ? content : JSON.stringify(content));
 
-      // Save to campaigns table
-      const { data: campaign, error: campaignError } = await supabaseAdmin
+      // 6. Save to ai_pipeline_outputs
+      await savePipelineOutput(tenantId, productId, "meta_ads", metaAdsContent, {
+        tokens_used: result.usage?.total_tokens || 0,
+        language,
+        intelligence_version: intelligenceOutput.version,
+      });
+
+      // 7. Also save to campaigns table
+      const { data: campaign } = await supabaseAdmin
         .from("campaigns")
         .insert({
-          tenant_id: ctx.user.tenantId,
+          tenant_id: tenantId,
           name: `${product.name} - Meta Ads`,
-          description: `AI-generated Meta ads campaign for ${product.name}`,
+          description: JSON.stringify(metaAdsContent),
           platform: "meta",
           status: "draft",
           budget: 0,
@@ -580,229 +804,364 @@ Create:
         .select()
         .single();
 
-      // Log usage
-      await supabaseAdmin.from("ai_usage_logs").insert({
-        tenant_id: ctx.user.tenantId,
-        ai_addon_id: META_ADS_ADDON_ID,
-        action: "generate_meta_ads",
-        units_used: 1,
-        metadata: {
-          product_id: productId,
-          campaign_id: campaign?.id,
-          tokens_used: result.usage?.total_tokens || 0,
-        },
-      });
+      const saved = await getLatestOutput(tenantId, productId, "meta_ads");
 
       return {
         productId,
         campaignId: campaign?.id,
         content: metaAdsContent,
+        version: saved?.version || 1,
+        fromCache: false,
         tokensUsed: result.usage?.total_tokens || 0,
       };
     }),
 
   // ============================================
-  // Full Pipeline: Product → Intelligence → Landing → Ads
+  // Full Pipeline (all 3 steps) - Inline implementation to avoid circular reference
   // ============================================
   runFullPipeline: tenantProcedure
     .input(z.object({
       productId: z.string().uuid(),
       language: z.enum(["ar", "en"]).optional().default("ar"),
+      forceRegenerate: z.boolean().optional().default(false),
     }))
-    .mutation(async ({ ctx, input }) => {
-      const { productId, language } = input;
+    .mutation(async ({ ctx, input }): Promise<{
+      productId: string;
+      productName: string;
+      intelligence: { data: unknown; version: number; fromCache: boolean };
+      landingPage: { data: unknown; version: number; fromCache: boolean };
+      metaAds: { data: unknown; version: number; campaignId?: string; fromCache: boolean };
+      totalTokensUsed: number;
+    }> => {
+      const { productId, language, forceRegenerate } = input;
+      const tenantId = ctx.tenantId;
 
-      // Step 1: Analyze Product
-      const intelligenceResult = await supabaseAdmin
+      // Get product first
+      const { data: product } = await supabaseAdmin
         .from("products")
         .select("*")
         .eq("id", productId)
-        .eq("tenant_id", ctx.user.tenantId)
+        .eq("tenant_id", tenantId)
         .single();
 
-      if (!intelligenceResult.data) {
+      if (!product) {
         throw new TRPCError({ code: "NOT_FOUND", message: "المنتج غير موجود" });
       }
 
-      // Generate intelligence
+      let totalTokens = 0;
       const isArabic = language === "ar";
-      const product = intelligenceResult.data;
 
-      // Step 1: Product Intelligence
-      const intelligencePrompt = isArabic
-        ? `حلل هذا المنتج وأنشئ ملف ذكاء: ${product.name} - ${product.description || ""} - السعر: ${product.price}`
-        : `Analyze this product and create intelligence profile: ${product.name} - ${product.description || ""} - Price: ${product.price}`;
+      // ===== Step 1: Intelligence =====
+      let intelligenceData: unknown;
+      let intelligenceVersion = 0;
+      let intelligenceFromCache = false;
 
-      const intelligenceResponse = await invokeLLM({
-        messages: [
-          { role: "system", content: isArabic ? "أنت خبير تسويق. أجب بـ JSON فقط." : "You are a marketing expert. Respond in JSON only." },
-          { role: "user", content: intelligencePrompt },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "intelligence",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                category: { type: "string" },
-                targetAudience: {
-                  type: "object",
-                  properties: {
-                    demographics: { type: "string" },
-                    interests: { type: "array", items: { type: "string" } },
-                    painPoints: { type: "array", items: { type: "string" } },
-                  },
-                  required: ["demographics", "interests", "painPoints"],
-                  additionalProperties: false,
-                },
-                uniqueSellingPoints: { type: "array", items: { type: "string" } },
-                pricingRange: { type: "string" },
-                toneOfVoice: { type: "string" },
-                visualStyle: {
-                  type: "object",
-                  properties: {
-                    primaryColors: { type: "array", items: { type: "string" } },
-                    style: { type: "string" },
-                    imagery: { type: "string" },
-                  },
-                  required: ["primaryColors", "style", "imagery"],
-                  additionalProperties: false,
-                },
-                keywords: { type: "array", items: { type: "string" } },
-                competitiveAdvantage: { type: "string" },
-              },
-              required: ["category", "targetAudience", "uniqueSellingPoints", "pricingRange", "toneOfVoice", "visualStyle", "keywords", "competitiveAdvantage"],
-              additionalProperties: false,
-            },
-          },
-        },
-      });
+      if (!forceRegenerate) {
+        const existing = await getLatestOutput(tenantId, productId, "intelligence");
+        if (existing) {
+          intelligenceData = existing.content;
+          intelligenceVersion = existing.version;
+          intelligenceFromCache = true;
+        }
+      }
 
-      const intelligenceContent = intelligenceResponse.choices[0]?.message?.content;
-      const intelligence = JSON.parse(typeof intelligenceContent === 'string' ? intelligenceContent : '{}');
-
-      // Step 2: Landing Page
-      const landingPrompt = isArabic
-        ? `أنشئ محتوى صفحة هبوط للمنتج: ${product.name}. الجمهور: ${intelligence.targetAudience?.demographics}. نقاط البيع: ${intelligence.uniqueSellingPoints?.join(", ")}`
-        : `Create landing page content for: ${product.name}. Audience: ${intelligence.targetAudience?.demographics}. USPs: ${intelligence.uniqueSellingPoints?.join(", ")}`;
-
-      const landingResponse = await invokeLLM({
-        messages: [
-          { role: "system", content: isArabic ? "أنت خبير صفحات هبوط. أجب بـ JSON فقط." : "You are a landing page expert. Respond in JSON only." },
-          { role: "user", content: landingPrompt },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "landing",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                headline: { type: "string" },
-                subheadline: { type: "string" },
-                ctaText: { type: "string" },
-                features: { type: "array", items: { type: "string" } },
-                benefits: { type: "array", items: { type: "string" } },
-              },
-              required: ["headline", "subheadline", "ctaText", "features", "benefits"],
-              additionalProperties: false,
-            },
-          },
-        },
-      });
-
-      const landingContent = landingResponse.choices[0]?.message?.content;
-      const landingPage = JSON.parse(typeof landingContent === 'string' ? landingContent : '{}');
-
-      // Step 3: Meta Ads
-      const adsPrompt = isArabic
-        ? `أنشئ 3 نسخ إعلانية Meta للمنتج: ${product.name}. الجمهور: ${intelligence.targetAudience?.demographics}. الكلمات: ${intelligence.keywords?.join(", ")}`
-        : `Create 3 Meta ad copies for: ${product.name}. Audience: ${intelligence.targetAudience?.demographics}. Keywords: ${intelligence.keywords?.join(", ")}`;
-
-      const adsResponse = await invokeLLM({
-        messages: [
-          { role: "system", content: isArabic ? "أنت خبير إعلانات Meta. أجب بـ JSON فقط." : "You are a Meta ads expert. Respond in JSON only." },
-          { role: "user", content: adsPrompt },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "ads",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                campaignObjective: { type: "string" },
-                adCopies: {
-                  type: "array",
-                  items: {
+      if (!intelligenceData) {
+        await checkAndDeductUsage(tenantId, AI_ADDON_IDS.PRODUCT_INTELLIGENCE, "analyze_product", { product_id: productId });
+        
+        const result = await invokeLLM({
+          messages: [
+            { role: "system", content: isArabic ? "أنت خبير تسويق. حلل المنتج وأنشئ ملف ذكاء. أجب بـ JSON فقط." : "You are a marketing expert. Analyze and create intelligence profile. JSON only." },
+            { role: "user", content: `Product: ${product.name}\nDescription: ${product.description || "N/A"}\nPrice: ${product.price}` },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "intelligence",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  category: { type: "string" },
+                  targetAudience: {
                     type: "object",
                     properties: {
-                      headline: { type: "string" },
-                      primaryText: { type: "string" },
-                      callToAction: { type: "string" },
+                      demographics: { type: "string" },
+                      interests: { type: "array", items: { type: "string" } },
+                      painPoints: { type: "array", items: { type: "string" } },
                     },
-                    required: ["headline", "primaryText", "callToAction"],
+                    required: ["demographics", "interests", "painPoints"],
                     additionalProperties: false,
                   },
+                  uniqueSellingPoints: { type: "array", items: { type: "string" } },
+                  keywords: { type: "array", items: { type: "string" } },
                 },
-                hooks: { type: "array", items: { type: "string" } },
+                required: ["category", "targetAudience", "uniqueSellingPoints", "keywords"],
+                additionalProperties: false,
               },
-              required: ["campaignObjective", "adCopies", "hooks"],
-              additionalProperties: false,
             },
           },
-        },
-      });
+        });
+        
+        const content = result.choices[0]?.message?.content;
+        intelligenceData = JSON.parse(typeof content === "string" ? content : "{}");
+        totalTokens += result.usage?.total_tokens || 0;
+        
+        await savePipelineOutput(tenantId, productId, "intelligence", intelligenceData, { tokens: totalTokens });
+        const saved = await getLatestOutput(tenantId, productId, "intelligence");
+        intelligenceVersion = saved?.version || 1;
+      }
 
-      const adsContent = adsResponse.choices[0]?.message?.content;
-      const metaAds = JSON.parse(typeof adsContent === 'string' ? adsContent : '{}');
+      const intel = intelligenceData as Record<string, unknown>;
 
-      // Save campaign to Supabase
-      const { data: campaign } = await supabaseAdmin
-        .from("campaigns")
-        .insert({
-          tenant_id: ctx.user.tenantId,
-          name: `${product.name} - AI Campaign`,
-          description: JSON.stringify({ intelligence, landingPage, metaAds }),
-          platform: "meta",
-          status: "draft",
-          budget: 0,
-          spent: 0,
-          revenue: 0,
-          orders_count: 0,
-        })
-        .select()
-        .single();
+      // ===== Step 2: Landing Page =====
+      let landingData: unknown;
+      let landingVersion = 0;
+      let landingFromCache = false;
 
-      // Log all usage
-      await supabaseAdmin.from("ai_usage_logs").insert({
-        tenant_id: ctx.user.tenantId,
-        ai_addon_id: PRODUCT_INTELLIGENCE_ADDON_ID,
-        action: "full_pipeline",
-        units_used: 3,
-        metadata: {
-          product_id: productId,
-          campaign_id: campaign?.id,
-          total_tokens: (intelligenceResponse.usage?.total_tokens || 0) + 
-                       (landingResponse.usage?.total_tokens || 0) + 
-                       (adsResponse.usage?.total_tokens || 0),
-        },
-      });
+      if (!forceRegenerate) {
+        const existing = await getLatestOutput(tenantId, productId, "landing_page");
+        if (existing) {
+          landingData = existing.content;
+          landingVersion = existing.version;
+          landingFromCache = true;
+        }
+      }
+
+      if (!landingData) {
+        await checkAndDeductUsage(tenantId, AI_ADDON_IDS.LANDING_PAGE, "generate_landing_page", { product_id: productId });
+        
+        const result = await invokeLLM({
+          messages: [
+            { role: "system", content: isArabic ? "أنت خبير صفحات هبوط. أنشئ محتوى صفحة. JSON فقط." : "Landing page expert. Create content. JSON only." },
+            { role: "user", content: `Product: ${product.name}\nCategory: ${intel.category}\nUSPs: ${(intel.uniqueSellingPoints as string[])?.join(", ")}` },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "landing",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  headline: { type: "string" },
+                  subheadline: { type: "string" },
+                  ctaText: { type: "string" },
+                  features: { type: "array", items: { type: "string" } },
+                  benefits: { type: "array", items: { type: "string" } },
+                },
+                required: ["headline", "subheadline", "ctaText", "features", "benefits"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+        
+        const content = result.choices[0]?.message?.content;
+        landingData = JSON.parse(typeof content === "string" ? content : "{}");
+        totalTokens += result.usage?.total_tokens || 0;
+        
+        await savePipelineOutput(tenantId, productId, "landing_page", landingData, { tokens: result.usage?.total_tokens });
+        const saved = await getLatestOutput(tenantId, productId, "landing_page");
+        landingVersion = saved?.version || 1;
+      }
+
+      // ===== Step 3: Meta Ads =====
+      let adsData: unknown;
+      let adsVersion = 0;
+      let adsFromCache = false;
+      let campaignId: string | undefined;
+
+      if (!forceRegenerate) {
+        const existing = await getLatestOutput(tenantId, productId, "meta_ads");
+        if (existing) {
+          adsData = existing.content;
+          adsVersion = existing.version;
+          adsFromCache = true;
+        }
+      }
+
+      if (!adsData) {
+        await checkAndDeductUsage(tenantId, AI_ADDON_IDS.META_ADS, "generate_meta_ads", { product_id: productId });
+        
+        const result = await invokeLLM({
+          messages: [
+            { role: "system", content: isArabic ? "أنت خبير إعلانات Meta. أنشئ حملة. JSON فقط." : "Meta ads expert. Create campaign. JSON only." },
+            { role: "user", content: `Product: ${product.name}\nKeywords: ${(intel.keywords as string[])?.join(", ")}` },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "ads",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  campaignObjective: { type: "string" },
+                  hooks: { type: "array", items: { type: "string" } },
+                  adCopies: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        headline: { type: "string" },
+                        primaryText: { type: "string" },
+                        callToAction: { type: "string" },
+                      },
+                      required: ["headline", "primaryText", "callToAction"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["campaignObjective", "hooks", "adCopies"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+        
+        const content = result.choices[0]?.message?.content;
+        adsData = JSON.parse(typeof content === "string" ? content : "{}");
+        totalTokens += result.usage?.total_tokens || 0;
+        
+        await savePipelineOutput(tenantId, productId, "meta_ads", adsData, { tokens: result.usage?.total_tokens });
+        const saved = await getLatestOutput(tenantId, productId, "meta_ads");
+        adsVersion = saved?.version || 1;
+
+        // Save to campaigns
+        const { data: campaign } = await supabaseAdmin
+          .from("campaigns")
+          .insert({
+            tenant_id: tenantId,
+            name: `${product.name} - Meta Ads`,
+            description: JSON.stringify(adsData),
+            platform: "meta",
+            status: "draft",
+            budget: 0,
+            spent: 0,
+            revenue: 0,
+            orders_count: 0,
+          })
+          .select()
+          .single();
+        campaignId = campaign?.id;
+      }
 
       return {
         productId,
         productName: product.name,
-        campaignId: campaign?.id,
-        intelligence,
-        landingPage,
-        metaAds,
-        totalTokensUsed: (intelligenceResponse.usage?.total_tokens || 0) + 
-                        (landingResponse.usage?.total_tokens || 0) + 
-                        (adsResponse.usage?.total_tokens || 0),
+        intelligence: { data: intelligenceData, version: intelligenceVersion, fromCache: intelligenceFromCache },
+        landingPage: { data: landingData, version: landingVersion, fromCache: landingFromCache },
+        metaAds: { data: adsData, version: adsVersion, campaignId, fromCache: adsFromCache },
+        totalTokensUsed: totalTokens,
       };
     }),
+
+  // ============================================
+  // Get Pipeline Status for a Product
+  // ============================================
+  getProductPipelineStatus: tenantProcedure
+    .input(z.object({ productId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const { productId } = input;
+      const tenantId = ctx.tenantId;
+
+      const intelligence = await getLatestOutput(tenantId, productId, "intelligence");
+      const landingPage = await getLatestOutput(tenantId, productId, "landing_page");
+      const metaAds = await getLatestOutput(tenantId, productId, "meta_ads");
+
+      return {
+        productId,
+        stages: {
+          intelligence: intelligence ? { version: intelligence.version, ready: true } : { version: 0, ready: false },
+          landingPage: landingPage ? { version: landingPage.version, ready: true } : { version: 0, ready: false },
+          metaAds: metaAds ? { version: metaAds.version, ready: true } : { version: 0, ready: false },
+        },
+      };
+    }),
+
+  // ============================================
+  // Get All Versions of an Output
+  // ============================================
+  getOutputVersions: tenantProcedure
+    .input(z.object({
+      productId: z.string().uuid(),
+      outputType: z.enum(["intelligence", "landing_page", "meta_ads"]),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { productId, outputType } = input;
+      const tenantId = ctx.tenantId;
+
+      const { data, error } = await supabaseAdmin
+        .from("ai_pipeline_outputs")
+        .select("id, version, created_at, metadata")
+        .eq("tenant_id", tenantId)
+        .eq("product_id", productId)
+        .eq("output_type", outputType)
+        .order("version", { ascending: false });
+
+      if (error) {
+        return [];
+      }
+
+      return data || [];
+    }),
+
+  // ============================================
+  // Get Specific Version Content
+  // ============================================
+  getOutputByVersion: tenantProcedure
+    .input(z.object({
+      productId: z.string().uuid(),
+      outputType: z.enum(["intelligence", "landing_page", "meta_ads"]),
+      version: z.number(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { productId, outputType, version } = input;
+      const tenantId = ctx.tenantId;
+
+      const { data, error } = await supabaseAdmin
+        .from("ai_pipeline_outputs")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("product_id", productId)
+        .eq("output_type", outputType)
+        .eq("version", version)
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "الإصدار غير موجود" });
+      }
+
+      return data;
+    }),
+
+  // ============================================
+  // Get Usage Stats
+  // ============================================
+  getUsageStats: tenantProcedure.query(async ({ ctx }) => {
+    const tenantId = ctx.tenantId;
+
+    // Get all AI subscriptions
+    const { data: subscriptions } = await supabaseAdmin
+      .from("tenant_ai_subscriptions")
+      .select(`
+        *,
+        ai_addons (name, slug)
+      `)
+      .eq("tenant_id", tenantId)
+      .in("status", ["active", "trial"]);
+
+    // Get recent usage
+    const { data: recentUsage } = await supabaseAdmin
+      .from("ai_usage_logs")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    return {
+      subscriptions: subscriptions || [],
+      recentUsage: recentUsage || [],
+    };
+  }),
 });
