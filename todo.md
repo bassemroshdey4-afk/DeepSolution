@@ -772,3 +772,33 @@
 - [x] AUTOMATION_AUTHORITY.md updated with 6 workflows
 - [x] n8n JSON exports (one per workflow)
 - [x] N8N_RUNBOOK.md updated with setup + secrets + SMTP
+
+
+## SHIPPING OPS Automation Track
+
+### Data Model (Supabase)
+- [x] shipment_events table (history)
+- [x] provider_status_mapping table (provider_status -> internal_status)
+- [x] order_internal_events table (station timeline)
+- [x] order_station_metrics table (SLA timers per stage)
+- [x] courier_performance_daily table (aggregates)
+
+### n8n Workflows
+- [x] S1: Shipping Status Ingestion (Cron 3-6h, API/CSV/Email modes)
+- [x] S2: Provider→Internal Status Mapping (Webhook trigger)
+- [x] S3: Ops Station Routing (Webhook trigger on state change)
+- [x] S4: Courier Performance Analytics (Cron 12h)
+
+### Documentation
+- [x] SHIPPING_AUTOMATION_MAP.md (inputs→outputs per workflow)
+- [x] n8n JSON exports for S1-S4
+- [x] Update N8N_RUNBOOK.md with CSV/email ingestion setup
+
+### Security
+- [x] Signed webhooks + idempotency
+- [x] Tenant-scoped secrets
+- [x] Full audit logs per workflow run
+
+**SHIPPING OPS AUTOMATION COMPLETE** ✅
+- 39 tests for Shipping Automation
+- 4 n8n workflows (S1-S4)

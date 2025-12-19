@@ -1,0 +1,334 @@
+{
+  "name": "S4: Courier Performance Analytics",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 12
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Every 12 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CORE_API_URL }}/api/trpc/superAdmin.getAllTenants",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "id": "get-tenants",
+      "name": "Get All Tenants",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "n8n-webhook-auth",
+          "name": "N8N Webhook Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-tenants",
+              "leftValue": "={{ $json.result.data.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-tenants",
+      "name": "Has Tenants?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "result.data",
+        "options": {}
+      },
+      "id": "split-tenants",
+      "name": "Split Tenants",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CORE_API_URL }}/api/trpc/shippingAutomation.computePerformance",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"date\": \"{{ new Date().toISOString().split('T')[0] }}\"\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "compute-performance",
+      "name": "Compute Performance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "n8n-webhook-auth",
+          "name": "N8N Webhook Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-recommendations",
+              "leftValue": "={{ $json.result.data.recommendations.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-recommendations",
+      "name": "Has Recommendations?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format recommendations for notification\nconst result = $input.item.json.result.data;\nconst tenant = $('Split Tenants').item.json;\n\nconst recommendations = result.recommendations.map(r => {\n  return `• ${r.courier}${r.region ? ` (${r.region})` : ''}: ${r.recommendation} (Score: ${r.score}/100)`;\n}).join('\\n');\n\nreturn [{\n  json: {\n    tenant_id: tenant.id,\n    tenant_name: tenant.name,\n    couriers_analyzed: result.couriersAnalyzed,\n    recommendations_text: recommendations,\n    recommendations: result.recommendations\n  }\n}];"
+      },
+      "id": "format-recommendations",
+      "name": "Format Recommendations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CORE_API_URL }}/api/trpc/n8nWorkflows.createAuditLog",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_id\": \"S4\",\n  \"tenant_id\": \"{{ $json.tenant_id }}\",\n  \"event_type\": \"COURIER_ANALYTICS_COMPUTED\",\n  \"entity_type\": \"performance_report\",\n  \"entity_id\": \"{{ new Date().toISOString().split('T')[0] }}\",\n  \"payload\": {\n    \"couriers_analyzed\": {{ $json.couriers_analyzed }},\n    \"recommendations_count\": {{ $json.recommendations.length }}\n  }\n}",
+        "options": {}
+      },
+      "id": "audit-log",
+      "name": "Create Audit Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1650, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "n8n-webhook-auth",
+          "name": "N8N Webhook Auth"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-recommendations",
+      "name": "No Recommendations",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {},
+      "id": "no-tenants",
+      "name": "No Tenants",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {},
+      "id": "complete",
+      "name": "Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1850, 200]
+    }
+  ],
+  "connections": {
+    "Every 12 Hours": {
+      "main": [
+        [
+          {
+            "node": "Get All Tenants",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Tenants": {
+      "main": [
+        [
+          {
+            "node": "Has Tenants?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Tenants?": {
+      "main": [
+        [
+          {
+            "node": "Split Tenants",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Tenants",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Tenants": {
+      "main": [
+        [
+          {
+            "node": "Compute Performance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Performance": {
+      "main": [
+        [
+          {
+            "node": "Has Recommendations?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Recommendations?": {
+      "main": [
+        [
+          {
+            "node": "Format Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Recommendations": {
+      "main": [
+        [
+          {
+            "node": "Create Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Audit Log": {
+      "main": [
+        [
+          {
+            "node": "Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Recommendations": {
+      "main": [
+        [
+          {
+            "node": "Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "shipping",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "analytics",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

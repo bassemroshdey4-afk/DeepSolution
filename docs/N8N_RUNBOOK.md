@@ -520,3 +520,293 @@ console.log('Environment:', $env.CORE_API_URL);
 ---
 
 **IMPORTANT**: This runbook is the authoritative guide for n8n operations. All team members working with automation must be familiar with these procedures. For workflow-specific details, refer to AUTOMATION_AUTHORITY.md.
+
+
+## Shipping OPS Automation Suite
+
+In addition to marketing workflows, DeepSolution uses 4 shipping automation workflows:
+
+| ID | Name | Trigger | Purpose |
+|----|------|---------|---------|
+| S1 | Shipping Status Ingestion | Cron (3h) | Pull shipping updates from carriers |
+| S2 | Provider→Internal Mapping | Webhook | Map provider statuses to internal states |
+| S3 | Ops Station Routing | Webhook | Route orders to correct UI queues |
+| S4 | Courier Performance Analytics | Cron (12h) | Compute carrier metrics |
+
+### S1: Shipping Status Ingestion
+
+**Purpose:** Pull shipping status updates from multiple sources and ingest into the system.
+
+| Aspect | Configuration |
+|--------|---------------|
+| Trigger | Cron every 3-6 hours |
+| Input | `shipments` table (active shipments) |
+| Output | `shipment_events` table |
+| Idempotency | `S1:{tenant_id}:{tracking_number}:{provider_status}:{occurred_at}` |
+
+**Ingestion Modes:**
+
+| Mode | Description | Setup |
+|------|-------------|-------|
+| API | Direct carrier API calls | Configure carrier credentials |
+| CSV | Upload CSV file | Use tRPC endpoint |
+| Email | Parse email content | Forward emails to ingestion endpoint |
+
+### CSV Upload Ingestion Setup
+
+For carriers without API access, users can upload CSV files with status updates.
+
+**Required CSV Columns:**
+| Column | Required | Description |
+|--------|----------|-------------|
+| `tracking_number` or `awb` | Yes | Shipment tracking number |
+| `status` | Yes | Provider status code |
+| `date` or `timestamp` | No | Event timestamp (defaults to now) |
+| `location` | No | Event location |
+| `description` | No | Status description |
+
+**Example CSV:**
+```csv
+tracking_number,status,date,location,description
+AWB123456789,delivered,2024-01-15 14:30:00,Riyadh,Package delivered to customer
+AWB987654321,in_transit,2024-01-15 10:00:00,Jeddah,Package in transit
+```
+
+**Upload via tRPC:**
+```typescript
+const result = await trpc.shippingAutomation.ingestFromCSV.mutate({
+  csv_content: csvString,
+  provider: "aramex"
+});
+```
+
+### Email Ingestion Setup
+
+For carriers that send status updates via email, configure email forwarding.
+
+**Setup Steps:**
+1. Create a dedicated email address (e.g., `shipping-updates@deepsolution.com`)
+2. Configure email forwarding to the ingestion endpoint
+3. Set up email parsing rules per carrier
+
+**Supported Email Patterns:**
+| Pattern | Extracted Data |
+|---------|----------------|
+| `tracking: AWB123456789` | Tracking number |
+| `delivered` | Status: delivered |
+| `out for delivery` | Status: out_for_delivery |
+| `in transit` | Status: in_transit |
+| `returned` | Status: returned |
+
+**Email Parsing via tRPC:**
+```typescript
+const result = await trpc.shippingAutomation.ingestFromEmail.mutate({
+  email_content: emailBody,
+  provider: "smsa"
+});
+```
+
+### S2: Provider→Internal Status Mapping
+
+**Purpose:** Translate provider-specific status codes to internal order states.
+
+| Aspect | Configuration |
+|--------|---------------|
+| Trigger | Webhook on new `shipment_event` |
+| Input | `shipment_events` + `provider_status_mapping` |
+| Output | `orders.state` + `order_internal_events` |
+| Idempotency | `S2:{tenant_id}:{shipment_event_id}` |
+
+**Default Mappings:**
+| Provider | Provider Status | Internal Status |
+|----------|-----------------|-----------------|
+| * | `pending` | `operations_pending` |
+| * | `picked_up` | `shipped` |
+| * | `in_transit` | `in_transit` |
+| * | `delivered` | `delivered` |
+| aramex | `SHP` | `shipped` |
+| aramex | `DEL` | `delivered` |
+| smsa | `Delivered` | `delivered` |
+
+**Custom Mapping:**
+```typescript
+await trpc.shippingAutomation.upsertStatusMapping.mutate({
+  provider: "custom_carrier",
+  provider_status: "DLVD",
+  internal_status: "delivered",
+  triggers_station: "finance",
+  is_terminal: true
+});
+```
+
+### S3: Ops Station Routing
+
+**Purpose:** Route orders to the correct UI queue based on their state.
+
+| Aspect | Configuration |
+|--------|---------------|
+| Trigger | Webhook on `orders.state` change |
+| Input | `orders` + `order_station_metrics` |
+| Output | `order_station_metrics` + `orders.current_station` |
+| Idempotency | `S3:{tenant_id}:{order_id}:{state}` |
+
+**Station Routing Rules:**
+| State | Station | SLA Target |
+|-------|---------|------------|
+| `new`, `call_center_pending` | CallCenter | 60 min |
+| `operations_pending`, `operations_processing` | Operations | 240 min |
+| `delivered`, `finance_pending` | Finance | 1440 min |
+| `return_*` | Returns | 2880 min |
+
+### S4: Courier Performance Analytics
+
+**Purpose:** Compute daily carrier performance metrics and generate recommendations.
+
+| Aspect | Configuration |
+|--------|---------------|
+| Trigger | Cron every 12 hours |
+| Input | `shipments` (last 30 days) |
+| Output | `courier_performance_daily` |
+| Idempotency | `S4:{tenant_id}:{date}` |
+
+**Computed Metrics:**
+| Metric | Description |
+|--------|-------------|
+| `avg_pickup_hours` | Average time from order to pickup |
+| `avg_delivery_hours` | Average time from order to delivery |
+| `avg_return_cycle_hours` | Average time for return cycle |
+| `avg_cod_remittance_hours` | Average time for COD settlement |
+| `delivery_rate` | Successful deliveries / total |
+| `return_rate` | Returns / total |
+| `on_time_rate` | Delivered within 72 hours |
+| `score` | Composite score (0-100) |
+
+**Scoring Formula:**
+```
+Score = 50 (base)
+      + (delivery_rate × 20)
+      - (return_rate × 15)
+      + (on_time_rate × 15)
+      - min(pickup_hours/24, 1) × 10
+```
+
+## Shipping Database Tables
+
+### Required Tables
+
+```sql
+-- Shipment events history
+CREATE TABLE shipment_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  shipment_id UUID NOT NULL REFERENCES shipments(id),
+  tracking_number VARCHAR(100) NOT NULL,
+  provider VARCHAR(50) NOT NULL,
+  provider_status VARCHAR(100) NOT NULL,
+  internal_status VARCHAR(50),
+  location VARCHAR(255),
+  description TEXT,
+  occurred_at TIMESTAMPTZ NOT NULL,
+  raw_data JSONB,
+  ingestion_mode VARCHAR(20) NOT NULL, -- api, csv, email, manual
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Provider status mapping
+CREATE TABLE provider_status_mapping (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  provider VARCHAR(50) NOT NULL,
+  provider_status VARCHAR(100) NOT NULL,
+  internal_status VARCHAR(50) NOT NULL,
+  triggers_station VARCHAR(20),
+  is_terminal BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(tenant_id, provider, provider_status)
+);
+
+-- Order internal events (station timeline)
+CREATE TABLE order_internal_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  order_id UUID NOT NULL REFERENCES orders(id),
+  from_state VARCHAR(50),
+  to_state VARCHAR(50) NOT NULL,
+  station VARCHAR(20) NOT NULL,
+  triggered_by VARCHAR(20) NOT NULL, -- system, user, automation
+  user_id UUID REFERENCES users(id),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Order station metrics (SLA timers)
+CREATE TABLE order_station_metrics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  order_id UUID NOT NULL REFERENCES orders(id),
+  station VARCHAR(20) NOT NULL,
+  entered_at TIMESTAMPTZ NOT NULL,
+  exited_at TIMESTAMPTZ,
+  duration_minutes INTEGER,
+  sla_target_minutes INTEGER NOT NULL,
+  sla_breached BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Courier performance daily aggregates
+CREATE TABLE courier_performance_daily (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  courier VARCHAR(50) NOT NULL,
+  date DATE NOT NULL,
+  region VARCHAR(100),
+  total_shipments INTEGER DEFAULT 0,
+  delivered_count INTEGER DEFAULT 0,
+  returned_count INTEGER DEFAULT 0,
+  avg_pickup_hours DECIMAL(10,2),
+  avg_delivery_hours DECIMAL(10,2),
+  avg_return_cycle_hours DECIMAL(10,2),
+  avg_cod_remittance_hours DECIMAL(10,2),
+  delivery_rate DECIMAL(5,4),
+  return_rate DECIMAL(5,4),
+  on_time_rate DECIMAL(5,4),
+  score INTEGER,
+  recommendations JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(tenant_id, courier, date, region)
+);
+
+-- Indexes
+CREATE INDEX idx_shipment_events_tenant ON shipment_events(tenant_id);
+CREATE INDEX idx_shipment_events_tracking ON shipment_events(tracking_number);
+CREATE INDEX idx_order_internal_events_order ON order_internal_events(order_id);
+CREATE INDEX idx_order_station_metrics_order ON order_station_metrics(order_id);
+CREATE INDEX idx_order_station_metrics_station ON order_station_metrics(station, exited_at);
+CREATE INDEX idx_courier_performance_daily_tenant ON courier_performance_daily(tenant_id, date);
+```
+
+## Shipping Workflow Files
+
+Import these workflow files into n8n:
+
+| File | Workflow |
+|------|----------|
+| `S1-shipping-status-ingestion.json` | Shipping Status Ingestion |
+| `S2-status-mapping.json` | Provider→Internal Status Mapping |
+| `S3-station-routing.json` | Ops Station Routing |
+| `S4-courier-analytics.json` | Courier Performance Analytics |
+
+## Shipping Secrets
+
+Additional secrets required for shipping workflows:
+
+| Secret | Purpose | Where to Set |
+|--------|---------|--------------|
+| `ARAMEX_API_KEY` | Aramex API access | n8n Credentials |
+| `ARAMEX_ACCOUNT_NUMBER` | Aramex account | n8n Credentials |
+| `SMSA_API_KEY` | SMSA API access | n8n Credentials |
+| `JNT_API_KEY` | J&T API access | n8n Credentials |
+
+---
+
+**IMPORTANT**: For shipping automation details, refer to SHIPPING_AUTOMATION_MAP.md.

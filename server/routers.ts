@@ -18,6 +18,7 @@ import { n8nWorkflowsRouter } from "./n8nWorkflowsRouter";
 import { productIntelligenceRouter } from "./productIntelligenceRouter";
 import { landingPageRouter } from "./landingPageRouter";
 import { n8nMarketingRouter } from "./n8nMarketingRouter";
+import { shippingAutomationRouter } from "./shippingAutomationService";
 import { publicProcedure, protectedProcedure, router, tenantProcedure } from "./_core/trpc";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
@@ -42,6 +43,7 @@ export const appRouter = router({
   productIntelligence: productIntelligenceRouter,
   landingPage: landingPageRouter,
   n8nMarketing: n8nMarketingRouter,
+  shippingAutomation: shippingAutomationRouter,
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),

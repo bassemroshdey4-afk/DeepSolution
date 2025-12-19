@@ -1,0 +1,221 @@
+{
+  "name": "S3: Ops Station Routing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "shipping/station-routing",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook: Order State Change",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "s3-station-routing"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verify HMAC signature\nconst crypto = require('crypto');\n\nconst signature = $input.item.json.headers['x-deepsolution-signature'];\nconst timestamp = $input.item.json.headers['x-deepsolution-timestamp'];\nconst body = JSON.stringify($input.item.json.body);\n\nconst secret = $env.N8N_WEBHOOK_SECRET;\nconst expectedSignature = 'sha256=' + crypto\n  .createHmac('sha256', secret)\n  .update(timestamp + '.' + body)\n  .digest('hex');\n\nif (signature !== expectedSignature) {\n  throw new Error('Invalid signature');\n}\n\nreturn [{ json: $input.item.json.body }];"
+      },
+      "id": "verify-signature",
+      "name": "Verify Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CORE_API_URL }}/api/trpc/shippingAutomation.routeToStation",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"order_id\": \"{{ $json.order_id }}\",\n  \"state\": \"{{ $json.state }}\"\n}",
+        "options": {}
+      },
+      "id": "route-to-station",
+      "name": "Route to Station",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "n8n-webhook-auth",
+          "name": "N8N Webhook Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "metrics-updated",
+              "leftValue": "={{ $json.result.data.metricsUpdated }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-metrics",
+      "name": "Metrics Updated?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CORE_API_URL }}/api/trpc/n8nWorkflows.createAuditLog",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_id\": \"S3\",\n  \"tenant_id\": \"{{ $('Verify Signature').item.json.tenant_id }}\",\n  \"event_type\": \"ORDER_ROUTED\",\n  \"entity_type\": \"order\",\n  \"entity_id\": \"{{ $('Verify Signature').item.json.order_id }}\",\n  \"payload\": {\n    \"station\": \"{{ $json.result.data.station }}\",\n    \"state\": \"{{ $('Verify Signature').item.json.state }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "audit-log",
+      "name": "Create Audit Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "n8n-webhook-auth",
+          "name": "N8N Webhook Auth"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-routing",
+      "name": "No Routing Needed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, station: $json.result.data.station, metricsUpdated: $json.result.data.metricsUpdated } }}",
+        "options": {}
+      },
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Webhook: Order State Change": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Signature": {
+      "main": [
+        [
+          {
+            "node": "Route to Station",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route to Station": {
+      "main": [
+        [
+          {
+            "node": "Metrics Updated?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrics Updated?": {
+      "main": [
+        [
+          {
+            "node": "Create Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Routing Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Audit Log": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Routing Needed": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "shipping",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "operations",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
