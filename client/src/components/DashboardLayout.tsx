@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Package, ShoppingCart, TrendingUp, Sparkles, MessageSquare, CreditCard, Settings, Wallet, Zap, FileText, Rocket, Link2, DollarSign } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Package, ShoppingCart, TrendingUp, Sparkles, MessageSquare, CreditCard, Settings, Wallet, Zap, FileText, Rocket, Link2, DollarSign, Boxes, ClipboardList } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -41,6 +41,8 @@ const menuItems = [
   { icon: Rocket, label: "خط أنابيب AI", path: "/ai-pipeline" },
   { icon: Link2, label: "التكاملات", path: "/integrations" },
   { icon: DollarSign, label: "تحليلات الربحية", path: "/profit" },
+  { icon: Boxes, label: "المخزون", path: "/inventory" },
+  { icon: ClipboardList, label: "المشتريات", path: "/purchasing" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

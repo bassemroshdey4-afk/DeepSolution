@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, ShoppingCart, Phone } from "lucide-react";
+import { Loader2, ShoppingCart, Phone, Package, DollarSign } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const statusLabels = {
   new: "جديد",
@@ -102,6 +103,8 @@ export default function Orders() {
                 <TableHead>الحالة</TableHead>
                 <TableHead>مركز الاتصال</TableHead>
                 <TableHead>التاريخ</TableHead>
+                <TableHead>المخزون</TableHead>
+                <TableHead>COGS</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -162,6 +165,32 @@ export default function Orders() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(order.createdAt).toLocaleDateString("ar-SA")}
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Badge variant={order.status === "confirmed" || order.status === "processing" ? "outline" : "secondary"}>
+                          <Package className="h-3 w-3 ml-1" />
+                          {order.status === "confirmed" ? "محجوز" : order.status === "shipped" || order.status === "delivered" ? "مخصوم" : "-"}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>حالة المخزون لهذا الطلب</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <span className="text-sm text-muted-foreground flex items-center">
+                          <DollarSign className="h-3 w-3" />
+                          {((order.totalAmount || 0) * 0.6 / 100).toFixed(0)}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>تكلفة البضاعة المباعة (تقديري)</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}

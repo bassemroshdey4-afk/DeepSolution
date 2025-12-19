@@ -493,4 +493,32 @@
 ### 7. Testing ✅
 - [x] 31 اختبار Vitest
 - [x] 294 اختبار إجمالي
+- [x] checkpoint (b14587ca)
+
+
+## Operational UX (Correctness-First) ✅
+### 1. Inventory UI ✅
+- [x] Product list with current, reserved, available stock
+- [x] Reorder level + status badges (low/ok)
+- [x] View stock movements (read-only)
+- [x] Manual adjustment (restricted)
+
+### 2. Purchasing UI ✅
+- [x] Suppliers: create, list
+- [x] Purchase Orders: create, list
+- [x] PO receiving: partial/full
+- [x] PO status tracking (draft/sent/received)
+
+### 3. Orders Integration ✅
+- [x] Show stock status per order (محجوز/مخصوم)
+- [x] Show COGS (read-only)
+- [x] Tooltips للتوضيح
+
+### 4. n8n Workflows ✅
+- [x] Low stock alert (every 6 hours)
+- [x] Delayed PO alert (daily)
+
+### 5. Manual Acceptance Test ✅
+- [x] دليل اختبار القبول اليدوي (docs/manual-acceptance-test.md)
+- [x] 294 اختبار Vitest
 - [ ] checkpoint

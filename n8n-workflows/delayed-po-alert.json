@@ -1,0 +1,199 @@
+{
+  "name": "Delayed PO Alert - DeepSolution",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.DEEPSOLUTION_API_URL}}/api/trpc/inventory.getDelayedPOAlerts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-delayed-pos",
+      "name": "Get Delayed POs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1",
+          "name": "DeepSolution API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.result.data.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-has-delayed",
+      "name": "Has Delayed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "po-summary",
+              "name": "poSummary",
+              "value": "={{ $json.result.data.map(po => `• ${po.poNumber} - ${po.supplierName}: متأخر ${po.daysOverdue} يوم (المتوقع: ${po.expectedDelivery})`).join('\\n') }}",
+              "type": "string"
+            },
+            {
+              "id": "total-count",
+              "name": "totalCount",
+              "value": "={{ $json.result.data.length }}",
+              "type": "number"
+            },
+            {
+              "id": "total-value",
+              "name": "totalValue",
+              "value": "={{ $json.result.data.reduce((sum, po) => sum + po.total, 0).toFixed(2) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-message",
+      "name": "Format Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [910, 200]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{$env.ADMIN_EMAIL}}",
+        "subject": "⚠️ طلبات شراء متأخرة - DeepSolution",
+        "message": "=مرحباً،\n\nيوجد {{ $json.totalCount }} طلب شراء متأخر عن موعد التسليم:\n\nإجمالي القيمة المعلقة: ${{ $json.totalValue }}\n\nالتفاصيل:\n{{ $json.poSummary }}\n\nيرجى المتابعة مع الموردين.\n\n---\nهذا تنبيه تلقائي من نظام DeepSolution",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1130, 200],
+      "credentials": {
+        "smtp": {
+          "id": "2",
+          "name": "SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-op",
+      "name": "No Delays",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [910, 400]
+    }
+  ],
+  "connections": {
+    "Daily Check": {
+      "main": [
+        [
+          {
+            "node": "Get Delayed POs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Delayed POs": {
+      "main": [
+        [
+          {
+            "node": "Has Delayed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Delayed?": {
+      "main": [
+        [
+          {
+            "node": "Format Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Delays",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Message": {
+      "main": [
+        [
+          {
+            "node": "Send Email Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["purchasing", "alerts", "automation"],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
