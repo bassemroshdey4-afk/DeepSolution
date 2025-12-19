@@ -714,3 +714,37 @@
 **BLOCK 2 ARCHITECTURE COMPLETE** ✅
 - 33 tests for Marketing Decision Engine
 - Total: 471 tests passing
+
+
+## Block 3: Landing Page Engine
+
+### Architecture
+- [x] LANDING_PAGE_ENGINE.md - architecture doc
+- [x] Data flow: Product Intelligence + Creative Brief → Landing Page
+
+### Database
+- [x] landing_pages table with versioning
+- [x] landing_page_sections table (hero, features, testimonials, cta, faq, footer)
+- [x] landing_page_variants table (A/B testing)
+
+### Service
+- [x] LandingPageService class
+- [x] generateFromProduct(productId, creativeBriefId) → landing page
+- [x] Section generators (hero, features, testimonials, cta, faq, footer)
+- [x] AI as content generator only (no auto-publish)
+
+### API
+- [x] tRPC endpoint: generate landing page
+- [x] tRPC endpoint: get landing page by product
+- [x] tRPC endpoint: update section
+- [x] tRPC endpoint: publish/unpublish
+- [x] tRPC endpoint: get variants
+- [x] tRPC endpoint: list landing pages
+
+### Audit
+- [x] All outputs versioned (no overwrite)
+- [x] Audit log integration
+
+**BLOCK 3 COMPLETE** ✅
+- 33 tests for Landing Page Engine
+- Total: 504 tests passing
