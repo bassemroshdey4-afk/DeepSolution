@@ -20,6 +20,7 @@ import SuperAdmin from "./pages/SuperAdmin";
 import Wallet from "./pages/Wallet";
 import AIAddons from "./pages/AIAddons";
 import ContentWriter from "./pages/ContentWriter";
+import AIPipeline from "./pages/AIPipeline";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -86,6 +87,7 @@ function Router() {
       <Route path="/wallet">{() => <ProtectedRoute component={Wallet} />}</Route>
       <Route path="/ai-addons">{() => <ProtectedRoute component={AIAddons} />}</Route>
       <Route path="/content-writer">{() => <ProtectedRoute component={ContentWriter} />}</Route>
+      <Route path="/ai-pipeline">{() => <ProtectedRoute component={AIPipeline} />}</Route>
       <Route>
         <Redirect to="/" />
       </Route>

@@ -220,3 +220,29 @@
 - [x] إرجاع المحتوى المولد
 - [x] واجهة Content Writer بسيطة (/content-writer)
 - [x] اختبار التدفق الكامل (10 اختبارات)
+
+
+## AI Marketing Expert Pipeline (End-to-End)
+### Phase 1: Product Intelligence Engine ✅
+- [x] إنشاء ProductIntelligence type/interface
+- [x] API: aiPipeline.analyzeProduct - تحليل صورة ووصف المنتج
+- [x] استخراج: category, target_audience, USPs, pricing_range, tone, visual_style
+- [x] تسجيل الاستخدام في ai_usage_logs
+- [x] اختبار Vitest
+
+### Phase 2: AI Landing Page Generator (Linked) ✅
+- [x] API: aiPipeline.generateLandingPage يستخدم product_intelligence
+- [x] توليد: headline, subheadline, heroSection, features, benefits, faq, CTA
+- [x] تسجيل الاستخدام
+
+### Phase 3: Meta Ads Generator ✅
+- [x] API: aiPipeline.generateMetaAds
+- [x] توليد: ad_angles, hooks, ad_copies, creative_briefs
+- [x] اقتراح: objectives, audiences
+- [x] حفظ في جدول campaigns
+
+### Phase 4: Integration & Testing ✅
+- [x] واجهة /ai-pipeline للتدفق الكامل
+- [x] API: aiPipeline.runFullPipeline - تدفق كامل
+- [x] اختبارات Vitest (7 اختبارات)
+- [ ] checkpoint
