@@ -1,0 +1,351 @@
+{
+  "name": "WF-006: Ops Alerts (Budget/Anomalies)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Hourly Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH recent_metrics AS (SELECT tenant_id, campaign_id, SUM(spend) as total_spend, AVG(roas) as avg_roas, AVG(ctr) as avg_ctr, MAX(date) as last_date FROM ad_platform_metrics WHERE date >= CURRENT_DATE - INTERVAL '7 days' GROUP BY tenant_id, campaign_id), baseline AS (SELECT tenant_id, campaign_id, AVG(spend) as baseline_spend, AVG(roas) as baseline_roas, AVG(ctr) as baseline_ctr FROM ad_platform_metrics WHERE date >= CURRENT_DATE - INTERVAL '30 days' AND date < CURRENT_DATE - INTERVAL '7 days' GROUP BY tenant_id, campaign_id) SELECT c.id as campaign_id, c.name as campaign_name, c.budget, c.platform, t.id as tenant_id, t.name as tenant_name, t.owner_email, rm.total_spend, rm.avg_roas, rm.avg_ctr, b.baseline_roas, b.baseline_ctr, CASE WHEN c.budget > 0 AND rm.total_spend / c.budget > 0.9 THEN 'budget_exhaustion' WHEN rm.total_spend > b.baseline_spend * 2 THEN 'spend_spike' WHEN b.baseline_roas > 0 AND rm.avg_roas < b.baseline_roas * 0.5 THEN 'roas_collapse' WHEN b.baseline_ctr > 0 AND rm.avg_ctr < b.baseline_ctr * 0.5 THEN 'ctr_drop' ELSE NULL END as alert_type FROM campaigns c JOIN tenants t ON t.id = c.tenant_id LEFT JOIN recent_metrics rm ON rm.campaign_id = c.id LEFT JOIN baseline b ON b.campaign_id = c.id WHERE c.status = 'active'"
+      },
+      "id": "detect-anomalies",
+      "name": "Detect Anomalies",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.alert_type }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "filter-alerts",
+      "name": "Filter Alerts Only",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 1 FROM workflow_executions WHERE idempotency_key = 'WF-006:{{ $json.campaign_id }}:{{ $json.alert_type }}:{{ $now.format(\"yyyy-MM-dd-HH\") }}'"
+      },
+      "id": "check-idempotency",
+      "name": "Check Idempotency",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.length }}",
+              "value2": 0,
+              "operation": "equal"
+            }
+          ]
+        }
+      },
+      "id": "filter-not-alerted",
+      "name": "Skip Already Alerted",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Determine severity and recommendation\nconst alert = $input.first().json;\n\nconst severityMap = {\n  'budget_exhaustion': 'critical',\n  'spend_spike': 'high',\n  'roas_collapse': 'critical',\n  'ctr_drop': 'medium',\n  'creative_fatigue': 'medium',\n  'conversion_drop': 'high'\n};\n\nconst descriptionMap = {\n  'budget_exhaustion': `Campaign budget is ${Math.round((alert.total_spend / alert.budget) * 100)}% exhausted. Consider increasing budget or pausing to avoid overspend.`,\n  'spend_spike': `Spend has increased by ${Math.round((alert.total_spend / (alert.baseline_spend || 1)) * 100)}% compared to baseline. Review for potential issues.`,\n  'roas_collapse': `ROAS has dropped to ${alert.avg_roas?.toFixed(2) || 'N/A'} from baseline ${alert.baseline_roas?.toFixed(2) || 'N/A'}. Immediate review recommended.`,\n  'ctr_drop': `CTR has dropped to ${(alert.avg_ctr * 100)?.toFixed(2) || 'N/A'}% from baseline ${(alert.baseline_ctr * 100)?.toFixed(2) || 'N/A'}%. Consider refreshing creatives.`\n};\n\nconst recommendationMap = {\n  'budget_exhaustion': 'Increase daily budget or pause campaign to prevent overspend.',\n  'spend_spike': 'Review recent changes and audience targeting for anomalies.',\n  'roas_collapse': 'Pause underperforming ad sets and review targeting.',\n  'ctr_drop': 'Refresh creative assets or adjust audience targeting.'\n};\n\nconst forceReview = ['budget_exhaustion', 'roas_collapse'].includes(alert.alert_type);\n\nreturn [{\n  json: {\n    ...alert,\n    severity: severityMap[alert.alert_type] || 'medium',\n    description: descriptionMap[alert.alert_type] || 'Anomaly detected',\n    recommendation: recommendationMap[alert.alert_type] || 'Review campaign performance',\n    force_review: forceReview\n  }\n}];"
+      },
+      "id": "enrich-alert",
+      "name": "Enrich Alert Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "={{ $json.owner_email }}",
+        "subject": "[DeepSolution Alert] {{ $json.severity.toUpperCase() }}: {{ $json.alert_type.replace('_', ' ').toUpperCase() }} - {{ $json.campaign_name }}",
+        "emailType": "html",
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { padding: 20px; text-align: center; }\n    .header.critical { background: #dc2626; color: white; }\n    .header.high { background: #ea580c; color: white; }\n    .header.medium { background: #ca8a04; color: white; }\n    .content { padding: 20px; background: #f9fafb; }\n    .alert-box { background: white; padding: 15px; border-left: 4px solid; margin: 15px 0; }\n    .alert-box.critical { border-color: #dc2626; }\n    .alert-box.high { border-color: #ea580c; }\n    .alert-box.medium { border-color: #ca8a04; }\n    .metrics { display: flex; gap: 20px; margin: 15px 0; }\n    .metric { background: white; padding: 10px; flex: 1; text-align: center; }\n    .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header {{ $json.severity }}\">\n      <h1>⚠️ ALERT: {{ $json.alert_type.replace('_', ' ').toUpperCase() }}</h1>\n    </div>\n    <div class=\"content\">\n      <p><strong>Campaign:</strong> {{ $json.campaign_name }}</p>\n      <p><strong>Platform:</strong> {{ $json.platform }}</p>\n      <p><strong>Severity:</strong> {{ $json.severity.toUpperCase() }}</p>\n      <p><strong>Detected at:</strong> {{ $now.format('yyyy-MM-dd HH:mm') }}</p>\n      \n      <div class=\"alert-box {{ $json.severity }}\">\n        <h3>Details:</h3>\n        <p>{{ $json.description }}</p>\n      </div>\n      \n      <div class=\"metrics\">\n        <div class=\"metric\">\n          <strong>Current Spend</strong><br>\n          ${{ $json.total_spend?.toFixed(2) || '0.00' }}\n        </div>\n        <div class=\"metric\">\n          <strong>Budget</strong><br>\n          ${{ $json.budget?.toFixed(2) || 'N/A' }}\n        </div>\n        <div class=\"metric\">\n          <strong>ROAS</strong><br>\n          {{ $json.avg_roas?.toFixed(2) || 'N/A' }}\n        </div>\n      </div>\n      \n      <h3>Recommended Action:</h3>\n      <p>{{ $json.recommendation }}</p>\n      \n      {{#if $json.force_review}}\n      <p style=\"background: #fef3c7; padding: 10px; border-radius: 4px;\">⚡ A campaign re-evaluation has been automatically triggered.</p>\n      {{/if}}\n      \n      <p><a href=\"{{ $env.APP_URL }}/dashboard/campaigns/{{ $json.campaign_id }}\" style=\"display: inline-block; padding: 10px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 4px;\">View Campaign</a></p>\n    </div>\n    <div class=\"footer\">\n      <p>DeepSolution Ops Monitoring</p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-alert",
+      "name": "Send Alert Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1450, 300],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials",
+          "name": "SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.force_review }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "check-force-review",
+      "name": "Check Force Review",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE campaigns SET force_review = true WHERE id = '{{ $json.campaign_id }}'"
+      },
+      "id": "trigger-review",
+      "name": "Trigger Force Review",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1850, 200],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "merge-paths",
+      "name": "Merge Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_executions (id, workflow_id, idempotency_key, tenant_id, entity_id, entity_type, status, created_at) VALUES (gen_random_uuid(), 'WF-006', 'WF-006:{{ $json.campaign_id }}:{{ $json.alert_type }}:{{ $now.format(\"yyyy-MM-dd-HH\") }}', '{{ $json.tenant_id }}', '{{ $json.campaign_id }}', 'campaign', 'completed', NOW())"
+      },
+      "id": "record-execution",
+      "name": "Record Execution",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [2250, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_audit_logs (id, workflow_id, tenant_id, event_type, entity_type, entity_id, payload, created_at) VALUES (gen_random_uuid(), 'WF-006', '{{ $json.tenant_id }}', '{{ $json.force_review ? \"FORCE_REVIEW_TRIGGERED\" : \"OPS_ALERT_TRIGGERED\" }}', 'campaign', '{{ $json.campaign_id }}', '{{ JSON.stringify({alert_type: $json.alert_type, severity: $json.severity}) }}', NOW())"
+      },
+      "id": "audit-log",
+      "name": "Write Audit Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [2450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Hourly Trigger": {
+      "main": [
+        [
+          {
+            "node": "Detect Anomalies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Anomalies": {
+      "main": [
+        [
+          {
+            "node": "Filter Alerts Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Alerts Only": {
+      "main": [
+        [
+          {
+            "node": "Check Idempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Idempotency": {
+      "main": [
+        [
+          {
+            "node": "Skip Already Alerted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Already Alerted": {
+      "main": [
+        [
+          {
+            "node": "Enrich Alert Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Alert Data": {
+      "main": [
+        [
+          {
+            "node": "Send Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Alert Email": {
+      "main": [
+        [
+          {
+            "node": "Check Force Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Force Review": {
+      "main": [
+        [
+          {
+            "node": "Trigger Force Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Trigger Force Review": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Paths": {
+      "main": [
+        [
+          {
+            "node": "Record Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Execution": {
+      "main": [
+        [
+          {
+            "node": "Write Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  },
+  "tags": [
+    {
+      "name": "ops",
+      "id": "tag-ops"
+    },
+    {
+      "name": "scheduled",
+      "id": "tag-scheduled"
+    },
+    {
+      "name": "alerts",
+      "id": "tag-alerts"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-12-19T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

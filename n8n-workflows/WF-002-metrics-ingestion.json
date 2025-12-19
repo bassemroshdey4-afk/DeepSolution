@@ -1,0 +1,371 @@
+{
+  "name": "WF-002: Ad Platform Metrics Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 3
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT apc.*, t.name as tenant_name FROM ad_platform_connections apc JOIN tenants t ON t.id = apc.tenant_id WHERE apc.status = 'active' AND apc.last_sync_at < NOW() - INTERVAL '3 hours'"
+      },
+      "id": "query-connections",
+      "name": "Query Active Connections",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.platform }}",
+              "value2": "meta"
+            }
+          ]
+        }
+      },
+      "id": "route-meta",
+      "name": "Route Meta",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.platform }}",
+              "value2": "google"
+            }
+          ]
+        }
+      },
+      "id": "route-google",
+      "name": "Route Google",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.facebook.com/v18.0/act_{{ $json.account_id }}/insights",
+        "authentication": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "campaign_id,campaign_name,impressions,clicks,spend,actions,action_values"
+            },
+            {
+              "name": "date_preset",
+              "value": "last_7d"
+            },
+            {
+              "name": "level",
+              "value": "campaign"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-meta-metrics",
+      "name": "Fetch Meta Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 200],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "meta-oauth",
+          "name": "Meta OAuth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://googleads.googleapis.com/v14/customers/{{ $json.customer_id }}/googleAds:searchStream",
+        "authentication": "oAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "SELECT campaign.id, campaign.name, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_7_DAYS"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-google-metrics",
+      "name": "Fetch Google Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 400],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "google-ads-oauth",
+          "name": "Google Ads OAuth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Meta metrics to unified schema\nconst items = $input.all();\nconst normalized = [];\n\nfor (const item of items) {\n  const data = item.json.data || [];\n  for (const row of data) {\n    const conversions = row.actions?.find(a => a.action_type === 'purchase')?.value || 0;\n    const revenue = row.action_values?.find(a => a.action_type === 'purchase')?.value || 0;\n    \n    normalized.push({\n      tenant_id: item.json.tenant_id,\n      platform: 'meta',\n      campaign_id: row.campaign_id,\n      campaign_name: row.campaign_name,\n      date: row.date_start,\n      impressions: parseInt(row.impressions) || 0,\n      clicks: parseInt(row.clicks) || 0,\n      spend: parseFloat(row.spend) || 0,\n      conversions: parseInt(conversions),\n      revenue: parseFloat(revenue),\n      ctr: row.impressions > 0 ? (row.clicks / row.impressions * 100) : 0,\n      cpc: row.clicks > 0 ? (row.spend / row.clicks) : 0,\n      cpm: row.impressions > 0 ? (row.spend / row.impressions * 1000) : 0,\n      roas: row.spend > 0 ? (revenue / row.spend) : 0,\n      raw_data: row,\n      ingested_at: new Date().toISOString()\n    });\n  }\n}\n\nreturn normalized.map(n => ({ json: n }));"
+      },
+      "id": "normalize-meta",
+      "name": "Normalize Meta Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Google metrics to unified schema\nconst items = $input.all();\nconst normalized = [];\n\nfor (const item of items) {\n  const results = item.json.results || [];\n  for (const row of results) {\n    const spend = (row.metrics?.cost_micros || 0) / 1000000;\n    const revenue = row.metrics?.conversions_value || 0;\n    \n    normalized.push({\n      tenant_id: item.json.tenant_id,\n      platform: 'google',\n      campaign_id: row.campaign?.id,\n      campaign_name: row.campaign?.name,\n      date: row.segments?.date,\n      impressions: parseInt(row.metrics?.impressions) || 0,\n      clicks: parseInt(row.metrics?.clicks) || 0,\n      spend: spend,\n      conversions: parseInt(row.metrics?.conversions) || 0,\n      revenue: parseFloat(revenue),\n      ctr: row.metrics?.impressions > 0 ? (row.metrics.clicks / row.metrics.impressions * 100) : 0,\n      cpc: row.metrics?.clicks > 0 ? (spend / row.metrics.clicks) : 0,\n      cpm: row.metrics?.impressions > 0 ? (spend / row.metrics.impressions * 1000) : 0,\n      roas: spend > 0 ? (revenue / spend) : 0,\n      raw_data: row,\n      ingested_at: new Date().toISOString()\n    });\n  }\n}\n\nreturn normalized.map(n => ({ json: n }));"
+      },
+      "id": "normalize-google",
+      "name": "Normalize Google Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {},
+      "id": "merge-metrics",
+      "name": "Merge All Metrics",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ad_platform_metrics (id, tenant_id, platform, campaign_id, campaign_name, date, impressions, clicks, spend, conversions, revenue, ctr, cpc, cpm, roas, raw_data, ingested_at) VALUES (gen_random_uuid(), '{{ $json.tenant_id }}', '{{ $json.platform }}', '{{ $json.campaign_id }}', '{{ $json.campaign_name }}', '{{ $json.date }}', {{ $json.impressions }}, {{ $json.clicks }}, {{ $json.spend }}, {{ $json.conversions }}, {{ $json.revenue }}, {{ $json.ctr }}, {{ $json.cpc }}, {{ $json.cpm }}, {{ $json.roas }}, '{{ JSON.stringify($json.raw_data) }}', '{{ $json.ingested_at }}') ON CONFLICT (tenant_id, platform, campaign_id, date) DO UPDATE SET impressions = EXCLUDED.impressions, clicks = EXCLUDED.clicks, spend = EXCLUDED.spend, conversions = EXCLUDED.conversions, revenue = EXCLUDED.revenue, ctr = EXCLUDED.ctr, cpc = EXCLUDED.cpc, cpm = EXCLUDED.cpm, roas = EXCLUDED.roas, raw_data = EXCLUDED.raw_data, ingested_at = EXCLUDED.ingested_at"
+      },
+      "id": "upsert-metrics",
+      "name": "Upsert Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ad_platform_connections SET last_sync_at = NOW(), sync_status = 'success' WHERE tenant_id = '{{ $json.tenant_id }}' AND platform = '{{ $json.platform }}'"
+      },
+      "id": "update-sync-status",
+      "name": "Update Sync Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_audit_logs (id, workflow_id, tenant_id, event_type, entity_type, entity_id, payload, created_at) VALUES (gen_random_uuid(), 'WF-002', '{{ $json.tenant_id }}', 'METRICS_INGESTED', 'ad_platform', '{{ $json.platform }}', '{{ JSON.stringify({platform: $json.platform, records_count: 1}) }}', NOW())"
+      },
+      "id": "audit-log",
+      "name": "Write Audit Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Query Active Connections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Active Connections": {
+      "main": [
+        [
+          {
+            "node": "Route Meta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route Google",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Meta": {
+      "main": [
+        [
+          {
+            "node": "Fetch Meta Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Google": {
+      "main": [
+        [
+          {
+            "node": "Fetch Google Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Meta Metrics": {
+      "main": [
+        [
+          {
+            "node": "Normalize Meta Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Google Metrics": {
+      "main": [
+        [
+          {
+            "node": "Normalize Google Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Meta Data": {
+      "main": [
+        [
+          {
+            "node": "Merge All Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Google Data": {
+      "main": [
+        [
+          {
+            "node": "Merge All Metrics",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge All Metrics": {
+      "main": [
+        [
+          {
+            "node": "Upsert Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Metrics": {
+      "main": [
+        [
+          {
+            "node": "Update Sync Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sync Status": {
+      "main": [
+        [
+          {
+            "node": "Write Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  },
+  "tags": [
+    {
+      "name": "metrics",
+      "id": "tag-metrics"
+    },
+    {
+      "name": "scheduled",
+      "id": "tag-scheduled"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-12-19T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

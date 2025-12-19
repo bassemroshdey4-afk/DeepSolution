@@ -1,0 +1,294 @@
+{
+  "name": "WF-003: Decision Notification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "decision-created",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "decision-created"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verify HMAC signature\nconst crypto = require('crypto');\nconst signature = $input.first().json.headers['x-deepsolution-signature'];\nconst timestamp = $input.first().json.headers['x-deepsolution-timestamp'];\nconst body = JSON.stringify($input.first().json.body);\n\nconst expectedSignature = 'sha256=' + crypto\n  .createHmac('sha256', $env.N8N_WEBHOOK_SECRET)\n  .update(body)\n  .digest('hex');\n\nif (signature !== expectedSignature) {\n  throw new Error('Invalid signature');\n}\n\n// Check timestamp (5 min tolerance)\nconst now = Date.now();\nconst requestTime = parseInt(timestamp);\nif (Math.abs(now - requestTime) > 300000) {\n  throw new Error('Request timestamp too old');\n}\n\nreturn $input.all();"
+      },
+      "id": "verify-signature",
+      "name": "Verify HMAC Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 1 FROM workflow_executions WHERE idempotency_key = 'WF-003:{{ $json.body.decision_id }}:email' AND created_at > NOW() - INTERVAL '1 day'"
+      },
+      "id": "check-idempotency",
+      "name": "Check Idempotency",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.length }}",
+              "value2": 0,
+              "operation": "equal"
+            }
+          ]
+        }
+      },
+      "id": "filter-not-sent",
+      "name": "Skip Already Sent",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT md.*, c.name as campaign_name, t.name as tenant_name, t.owner_email, t.notification_preferences FROM marketing_decisions md JOIN campaigns c ON c.id = md.campaign_id JOIN tenants t ON t.id = md.tenant_id WHERE md.id = '{{ $json.body.decision_id }}'"
+      },
+      "id": "get-decision-details",
+      "name": "Get Decision Details",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.notification_preferences?.email_enabled !== false }}",
+              "operation": "isTrue"
+            },
+            {
+              "value1": "={{ $json.confidence >= ($json.notification_preferences?.min_confidence || 70) }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "check-preferences",
+      "name": "Check Notification Preferences",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "={{ $json.owner_email }}",
+        "subject": "[DeepSolution] Campaign Update: {{ $json.campaign_name }}",
+        "emailType": "html",
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background: #2563eb; color: white; padding: 20px; text-align: center; }\n    .content { padding: 20px; background: #f9fafb; }\n    .recommendation { background: white; padding: 15px; border-left: 4px solid #2563eb; margin: 15px 0; }\n    .confidence { display: inline-block; padding: 5px 10px; background: #10b981; color: white; border-radius: 4px; }\n    .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>Campaign Update</h1>\n    </div>\n    <div class=\"content\">\n      <p>Hi {{ $json.tenant_name }},</p>\n      <p>Our AI has analyzed your campaign <strong>\"{{ $json.campaign_name }}\"</strong> and has a recommendation:</p>\n      \n      <div class=\"recommendation\">\n        <p><strong>Recommendation:</strong> {{ $json.recommendations?.action || 'Review' }}</p>\n        <p><strong>Confidence:</strong> <span class=\"confidence\">{{ $json.confidence }}%</span></p>\n      </div>\n      \n      <h3>Summary:</h3>\n      <p>{{ $json.client_explanation }}</p>\n      \n      <h3>Next Steps:</h3>\n      <p>Please review and approve this recommendation in your dashboard.</p>\n      \n      <p><a href=\"{{ $env.APP_URL }}/dashboard/campaigns/{{ $json.campaign_id }}/decisions/{{ $json.id }}\" style=\"display: inline-block; padding: 10px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 4px;\">Review Decision</a></p>\n    </div>\n    <div class=\"footer\">\n      <p>DeepSolution Marketing Intelligence</p>\n      <p>You're receiving this because you have notifications enabled for {{ $json.campaign_name }}.</p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1450, 300],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials",
+          "name": "SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO notification_logs (id, tenant_id, decision_id, channel, recipient, status, sent_at) VALUES (gen_random_uuid(), '{{ $json.tenant_id }}', '{{ $json.id }}', 'email', '{{ $json.owner_email }}', 'sent', NOW())"
+      },
+      "id": "log-notification",
+      "name": "Log Notification",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_executions (id, workflow_id, idempotency_key, tenant_id, entity_id, entity_type, status, created_at) VALUES (gen_random_uuid(), 'WF-003', 'WF-003:{{ $json.id }}:email', '{{ $json.tenant_id }}', '{{ $json.id }}', 'decision', 'completed', NOW())"
+      },
+      "id": "record-execution",
+      "name": "Record Execution",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_audit_logs (id, workflow_id, tenant_id, event_type, entity_type, entity_id, payload, created_at) VALUES (gen_random_uuid(), 'WF-003', '{{ $json.tenant_id }}', 'NOTIFICATION_SENT', 'decision', '{{ $json.id }}', '{{ JSON.stringify({channel: \"email\", recipient: $json.owner_email}) }}', NOW())"
+      },
+      "id": "audit-log",
+      "name": "Write Audit Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [2050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Verify HMAC Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify HMAC Signature": {
+      "main": [
+        [
+          {
+            "node": "Check Idempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Idempotency": {
+      "main": [
+        [
+          {
+            "node": "Skip Already Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Already Sent": {
+      "main": [
+        [
+          {
+            "node": "Get Decision Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Decision Details": {
+      "main": [
+        [
+          {
+            "node": "Check Notification Preferences",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Notification Preferences": {
+      "main": [
+        [
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Notification": {
+      "main": [
+        [
+          {
+            "node": "Log Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Notification": {
+      "main": [
+        [
+          {
+            "node": "Record Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Execution": {
+      "main": [
+        [
+          {
+            "node": "Write Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  },
+  "tags": [
+    {
+      "name": "notification",
+      "id": "tag-notification"
+    },
+    {
+      "name": "webhook",
+      "id": "tag-webhook"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-12-19T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

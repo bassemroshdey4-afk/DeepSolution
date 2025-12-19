@@ -13,30 +13,31 @@ This document serves as the **single source of truth** for all automation workfl
 The automation system follows a hub-and-spoke model where n8n acts as the orchestration layer, connecting the core application with external services.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        DeepSolution Core                         │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐            │
-│  │ Orders  │  │Products │  │Shipments│  │ Wallet  │            │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘            │
-│       │            │            │            │                   │
-│       └────────────┴────────────┴────────────┘                   │
-│                          │                                       │
-│                    ┌─────┴─────┐                                 │
-│                    │  tRPC API │                                 │
-│                    └─────┬─────┘                                 │
-└──────────────────────────┼───────────────────────────────────────┘
-                           │
-                    ┌──────┴──────┐
-                    │    n8n      │
-                    │ Orchestrator│
-                    └──────┬──────┘
-                           │
-         ┌─────────────────┼─────────────────┐
-         │                 │                 │
-    ┌────┴────┐      ┌─────┴─────┐     ┌────┴────┐
-    │ Carriers│      │   SMTP    │     │ Webhooks│
-    │  APIs   │      │  Server   │     │ External│
-    └─────────┘      └───────────┘     └─────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           DeepSolution Core                                  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+│  │  Marketing  │  │  Landing    │  │   Ad       │  │   Ops      │        │
+│  │  Decision   │  │   Pages     │  │  Platforms │  │  Alerts    │        │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘        │
+│         │                │                │                │                │
+│         └────────────────┴────────────────┴────────────────┘                │
+│                                   │                                         │
+│                            ┌──────┴──────┐                                  │
+│                            │   tRPC API  │                                  │
+│                            └──────┬──────┘                                  │
+└───────────────────────────────────┼─────────────────────────────────────────┘
+                                    │
+                             ┌──────┴──────┐
+                             │     n8n     │
+                             │ Orchestrator│
+                             └──────┬──────┘
+                                    │
+          ┌─────────────────────────┼─────────────────────────┐
+          │                         │                         │
+     ┌────┴────┐              ┌─────┴─────┐             ┌────┴────┐
+     │   Ad    │              │   SMTP    │             │ Webhooks│
+     │Platforms│              │  Server   │             │ External│
+     └─────────┘              └───────────┘             └─────────┘
 ```
 
 ### Technology Stack
@@ -51,287 +52,84 @@ The automation system follows a hub-and-spoke model where n8n acts as the orches
 
 ---
 
+## Security Requirements
+
+### HMAC Webhook Signatures
+
+All webhooks use HMAC-SHA256 signatures for authentication:
+
+```typescript
+// Signature generation
+const signature = crypto
+  .createHmac('sha256', N8N_WEBHOOK_SECRET)
+  .update(JSON.stringify(payload))
+  .digest('hex');
+
+// Header format
+X-DeepSolution-Signature: sha256={signature}
+X-DeepSolution-Timestamp: {unix_timestamp}
+```
+
+### Per-Tenant Secrets
+
+Each tenant has isolated secrets stored in `tenant_secrets` table:
+
+| Secret Type | Purpose | Rotation |
+|-------------|---------|----------|
+| `webhook_secret` | HMAC signing | 90 days |
+| `ad_platform_tokens` | API access | Per platform policy |
+| `smtp_credentials` | Email sending | 180 days |
+
+### Idempotency Keys
+
+All workflows use idempotency keys to prevent duplicate execution:
+
+| Format | Example | TTL |
+|--------|---------|-----|
+| `{workflow_id}:{tenant_id}:{entity_id}:{action}` | `WF-001:t_123:camp_456:evaluate` | 24h |
+
+### Rate Limiting
+
+| Endpoint Type | Limit | Window |
+|---------------|-------|--------|
+| Webhook triggers | 100 req | 1 min |
+| API calls per tenant | 1000 req | 1 hour |
+| Email notifications | 50 emails | 1 hour |
+
+---
+
 ## Complete Workflow Registry
 
 ### Workflow Index
 
 | ID | Workflow Name | Trigger | Frequency | Status |
 |----|---------------|---------|-----------|--------|
-| WF-001 | Order Created → Reserve Stock | Webhook | Real-time | Active |
-| WF-002 | Order Fulfilled → Deduct Stock + P&L | Webhook | Real-time | Active |
-| WF-003 | Shipping Status Sync | Cron + Webhook | 15 min | Active |
-| WF-004 | COD Settlement Sync | Cron | Daily 6 AM | Active |
-| WF-005 | Low Stock Alert | Cron | Every 6 hours | Active |
+| WF-001 | Campaign Re-Evaluation Scheduler | Cron | 6h (4-12h adjustable) | Active |
+| WF-002 | Ad Platform Metrics Ingestion | Cron | 3-6h | Active |
+| WF-003 | Decision Notification | Webhook | Real-time | Active |
+| WF-004 | Approval → Execute | Webhook | Real-time | Active |
+| WF-005 | Landing Page Publish Pipeline | Webhook | Real-time | Active |
+| WF-006 | Ops Alerts (Budget/Anomalies) | Cron | Hourly | Active |
 
 ---
 
-## WF-001: Order Created → Reserve Stock
+## WF-001: Campaign Re-Evaluation Scheduler
 
 ### Purpose
 
-When a new order is created, this workflow automatically reserves inventory for each line item to prevent overselling during the fulfillment window.
+Periodically evaluates active campaigns to determine if marketing decisions need to be updated based on performance data, spend thresholds, or data freshness.
 
 ### Data Flow
 
 | Stage | Source | Transformation | Destination |
 |-------|--------|----------------|-------------|
-| Input | `orders` table | Extract order_id, tenant_id | Workflow context |
-| Lookup | `order_items` table | Get product_id, quantity | Memory |
-| Lookup | `products` table | Get current stock, reserved | Memory |
-| Calculate | Memory | available = quantity - reserved | Memory |
-| Validate | Memory | Check available >= requested | Decision |
-| Update | Memory | new_reserved = reserved + requested | `products.reserved_stock` |
-| Record | Memory | Create movement record | `stock_movements` |
-| Audit | Memory | Log reservation event | `audit_logs` |
-
-### Trigger Configuration
-
-```json
-{
-  "type": "webhook",
-  "method": "POST",
-  "path": "/api/n8n/order-created",
-  "authentication": "header",
-  "headerName": "X-N8N-Signature",
-  "headerValue": "{{HMAC-SHA256(body, N8N_WEBHOOK_SECRET)}}"
-}
-```
-
-### Idempotency
-
-| Key Format | Example | Storage |
-|------------|---------|---------|
-| `{order_id}:reserve` | `ord_abc123:reserve` | `workflow_executions` table |
-
-### Failure Handling
-
-| Failure Type | Action | Retry |
-|--------------|--------|-------|
-| Product not found | Log error, skip item | No |
-| Insufficient stock | Log warning, continue | No |
-| Database error | Retry with backoff | 3x |
-| Timeout | Retry with backoff | 3x |
-
-### Audit Events
-
-| Event Type | Entity | Payload |
-|------------|--------|---------|
-| `STOCK_RESERVED` | order | `{order_id, reservations: [{product_id, quantity}]}` |
-| `STOCK_INSUFFICIENT` | order | `{order_id, product_id, requested, available}` |
-
----
-
-## WF-002: Order Fulfilled → Deduct Stock + P&L
-
-### Purpose
-
-When an order is marked as shipped or delivered, this workflow converts reserved stock to actual deductions, calculates Cost of Goods Sold (COGS), and computes the profit/loss for the order.
-
-### Data Flow
-
-| Stage | Source | Transformation | Destination |
-|-------|--------|----------------|-------------|
-| Input | `orders` table | Extract order_id, status | Workflow context |
-| Validate | Memory | Check status in [shipped, delivered] | Decision |
-| Lookup | `order_items` table | Get items with quantities | Memory |
-| Lookup | `products` table | Get cost_price per item | Memory |
-| Calculate | Memory | COGS = Σ(quantity × cost_price) | Memory |
-| Update | Memory | quantity -= ordered, reserved -= ordered | `products` |
-| Record | Memory | Create sale movement | `stock_movements` |
-| Write | Memory | Store COGS | `order_costs` |
-| Calculate | Memory | profit = revenue - COGS - shipping | Memory |
-| Write | Memory | Store P&L | `order_pnl` |
-| Audit | Memory | Log all events | `audit_logs` |
-
-### Trigger Configuration
-
-```json
-{
-  "type": "webhook",
-  "method": "POST",
-  "path": "/api/n8n/order-fulfilled",
-  "authentication": "header",
-  "headerName": "X-N8N-Signature"
-}
-```
-
-### Idempotency
-
-| Key Format | Example | Storage |
-|------------|---------|---------|
-| `{order_id}:deduct` | `ord_abc123:deduct` | `workflow_executions` table |
-
-### Failure Handling
-
-| Failure Type | Action | Retry |
-|--------------|--------|-------|
-| Order not found | Log error, abort | No |
-| Invalid status | Skip silently | No |
-| Calculation error | Log, use fallback | No |
-| Database error | Retry with backoff | 3x |
-
-### Audit Events
-
-| Event Type | Entity | Payload |
-|------------|--------|---------|
-| `STOCK_DEDUCTED` | order | `{order_id, deductions: [{product_id, quantity}]}` |
-| `COGS_RECORDED` | order | `{order_id, total_cogs}` |
-| `PNL_COMPUTED` | order | `{order_id, revenue, cogs, shipping, net_profit}` |
-
----
-
-## WF-003: Shipping Status Sync
-
-### Purpose
-
-This workflow synchronizes shipping status from carrier systems (via API, webhook, or manual import) to keep shipment records and order statuses up to date.
-
-### Data Flow
-
-| Stage | Source | Transformation | Destination |
-|-------|--------|----------------|-------------|
-| Input | Carrier API / Webhook | Extract tracking events | Workflow context |
-| Lookup | `shipments` table | Find by tracking_number | Memory |
-| Normalize | Memory | Map carrier status → standard enum | Memory |
-| Append | Memory | Add to tracking_events array | `shipments.tracking_events` |
-| Update | Memory | Set new status | `shipments.status` |
-| Sync | Memory | Map to order status | `orders.status` |
-| Audit | Memory | Log status change | `audit_logs` |
-
-### Status Normalization Map
-
-| Carrier Status | Normalized Status |
-|----------------|-------------------|
-| "Delivered", "Package Delivered" | `DELIVERED` |
-| "In Transit", "On the way" | `IN_TRANSIT` |
-| "Out for Delivery" | `OUT_FOR_DELIVERY` |
-| "Picked Up", "Collected" | `PICKED_UP` |
-| "Failed", "Delivery Failed" | `FAILED` |
-| "Returned", "Return to Sender" | `RETURNED` |
-| "Created", "Shipment Created" | `CREATED` |
-
-### Order Status Mapping
-
-| Shipping Status | Order Status |
-|-----------------|--------------|
-| `PICKED_UP` | `in_transit` |
-| `IN_TRANSIT` | `in_transit` |
-| `OUT_FOR_DELIVERY` | `out_for_delivery` |
-| `DELIVERED` | `delivered` |
-| `FAILED` | `failed` |
-| `RETURNED` | `returned` |
-
-### Trigger Configuration
-
-```json
-{
-  "triggers": [
-    {
-      "type": "cron",
-      "expression": "0 */15 * * * *",
-      "description": "Every 15 minutes"
-    },
-    {
-      "type": "webhook",
-      "path": "/api/n8n/shipping-update",
-      "description": "Real-time carrier webhooks"
-    }
-  ]
-}
-```
-
-### Idempotency
-
-| Key Format | Example | Storage |
-|------------|---------|---------|
-| `{shipment_id}:{status}:{timestamp}` | `shp_123:DELIVERED:2024-01-15T10:00:00Z` | `workflow_executions` |
-
-### Failure Handling
-
-| Failure Type | Action | Retry |
-|--------------|--------|-------|
-| Carrier API down | Log, retry later | 3x |
-| Shipment not found | Log warning | No |
-| Invalid status | Use IN_TRANSIT default | No |
-
-### Audit Events
-
-| Event Type | Entity | Payload |
-|------------|--------|---------|
-| `SHIPPING_STATUS_CHANGED` | shipment | `{shipment_id, old_status, new_status, carrier}` |
-
----
-
-## WF-004: COD Settlement Sync
-
-### Purpose
-
-This workflow processes Cash on Delivery (COD) settlement reports from carriers to mark payments as collected and finalize order profitability.
-
-### Data Flow
-
-| Stage | Source | Transformation | Destination |
-|-------|--------|----------------|-------------|
-| Input | Carrier settlement report | Parse tracking numbers, amounts | Workflow context |
-| Lookup | `shipments` table | Match by tracking_number | Memory |
-| Validate | Memory | Check not already collected | Decision |
-| Update | Memory | Set cod_collected = true | `shipments` |
-| Record | Memory | Create settlement record | `cod_settlements` |
-| Finalize | Memory | Set P&L status = finalized | `order_pnl` |
-| Credit | Memory | Add COD to wallet | `wallet_transactions` |
-| Audit | Memory | Log collection | `audit_logs` |
-
-### Trigger Configuration
-
-```json
-{
-  "type": "cron",
-  "expression": "0 0 6 * * *",
-  "timezone": "Asia/Riyadh",
-  "description": "Daily at 6 AM local time"
-}
-```
-
-### Idempotency
-
-| Key Format | Example | Storage |
-|------------|---------|---------|
-| `{settlement_id}:{tracking_number}` | `stl_789:AWB123456` | `workflow_executions` |
-
-### Failure Handling
-
-| Failure Type | Action | Retry |
-|--------------|--------|-------|
-| Settlement already processed | Skip silently | No |
-| Shipment not found | Log error | No |
-| Amount mismatch | Log warning, proceed | No |
-| Database error | Retry with backoff | 3x |
-
-### Audit Events
-
-| Event Type | Entity | Payload |
-|------------|--------|---------|
-| `COD_COLLECTED` | shipment | `{shipment_id, amount, settlement_id}` |
-| `PROFIT_FINALIZED` | order | `{order_id, final_profit}` |
-
----
-
-## WF-005: Low Stock Alert
-
-### Purpose
-
-This workflow monitors inventory levels and sends email alerts when products fall below their defined thresholds, preventing stockouts.
-
-### Data Flow
-
-| Stage | Source | Transformation | Destination |
-|-------|--------|----------------|-------------|
-| Query | `products` table | Filter where available < threshold | Memory |
-| Group | Memory | Group by tenant | Memory |
-| Template | Memory | Generate email content | Memory |
-| Send | Memory | Dispatch via SMTP | Email server |
-| Record | Memory | Create alert record | `stock_alerts` |
-| Audit | Memory | Log alert sent | `audit_logs` |
+| Query | `tenants` table | Get active tenants | Memory |
+| Query | `campaigns` table | Get campaigns needing review | Memory |
+| Filter | Memory | Check spend threshold, data freshness | Memory |
+| Call | Core API | Run Marketing Decision Engine | Memory |
+| Store | Memory | Save decision_version, explanation | `marketing_decisions` |
+| Update | Memory | Set next_check_at | `campaigns` |
+| Audit | Memory | Log evaluation | `workflow_audit_logs` |
 
 ### Trigger Configuration
 
@@ -339,7 +137,44 @@ This workflow monitors inventory levels and sends email alerts when products fal
 {
   "type": "cron",
   "expression": "0 0 */6 * * *",
-  "description": "Every 6 hours"
+  "timezone": "UTC",
+  "description": "Every 6 hours (adjustable 4-12h via env)",
+  "configurable": {
+    "env_var": "CAMPAIGN_EVAL_INTERVAL_HOURS",
+    "min": 4,
+    "max": 12,
+    "default": 6
+  }
+}
+```
+
+### Review Criteria
+
+| Criterion | Threshold | Action |
+|-----------|-----------|--------|
+| Spend since last review | > $50 | Trigger review |
+| Data freshness | > 6 hours | Trigger review |
+| Performance change | > 20% ROAS delta | Trigger review |
+| Manual flag | `force_review = true` | Trigger review |
+
+### Output Schema
+
+```typescript
+interface CampaignDecision {
+  decision_id: string;
+  tenant_id: string;
+  campaign_id: string;
+  decision_version: number;
+  client_explanation: string;  // Human-readable summary
+  confidence: number;          // 0-100
+  recommendations: {
+    action: 'continue' | 'pause' | 'adjust' | 'scale';
+    budget_change?: number;
+    audience_change?: string;
+    creative_change?: string;
+  };
+  next_check_at: string;       // ISO timestamp
+  created_at: string;
 }
 ```
 
@@ -347,160 +182,538 @@ This workflow monitors inventory levels and sends email alerts when products fal
 
 | Key Format | Example | Storage |
 |------------|---------|---------|
-| `{tenant_id}:low-stock:{date}` | `tnt_123:low-stock:2024-01-15` | `workflow_executions` |
-
-The daily key prevents alert spam while ensuring at least one notification per day.
+| `WF-001:{tenant_id}:{campaign_id}:{date}` | `WF-001:t_123:camp_456:2024-01-15` | `workflow_executions` |
 
 ### Failure Handling
 
 | Failure Type | Action | Retry |
 |--------------|--------|-------|
-| SMTP failure | Retry, then log | 2x |
-| No low stock | Skip silently | No |
-| Email bounce | Log warning | No |
+| Tenant not found | Skip, log warning | No |
+| API timeout | Retry with backoff | 3x |
+| Decision engine error | Log, use previous decision | No |
+| Database error | Retry with backoff | 3x |
 
 ### Audit Events
 
 | Event Type | Entity | Payload |
 |------------|--------|---------|
-| `LOW_STOCK_ALERT_SENT` | inventory | `{tenant_id, product_count, recipient_email}` |
+| `CAMPAIGN_EVALUATED` | campaign | `{campaign_id, decision_version, confidence}` |
+| `EVALUATION_SKIPPED` | campaign | `{campaign_id, reason}` |
 
 ---
 
-## Database Tables for Automation
+## WF-002: Ad Platform Metrics Ingestion
 
-### Core Tables Used
+### Purpose
 
-| Table | Read | Write | Purpose |
-|-------|------|-------|---------|
-| `orders` | ✓ | ✓ | Order data and status |
-| `order_items` | ✓ | - | Line items |
-| `products` | ✓ | ✓ | Stock levels |
-| `shipments` | ✓ | ✓ | Tracking data |
-| `wallet_transactions` | - | ✓ | Financial records |
+Pulls performance metrics from ad platforms (Meta, Google, TikTok) and normalizes them into a unified schema for analysis and decision-making.
 
-### Automation-Specific Tables
+### Data Flow
 
-| Table | Purpose | Retention |
-|-------|---------|-----------|
-| `workflow_executions` | Idempotency tracking | 90 days |
-| `n8n_dead_letters` | Failed executions | Until resolved |
-| `stock_movements` | Inventory audit trail | Permanent |
-| `stock_alerts` | Alert history | 30 days |
-| `cod_settlements` | COD reconciliation | Permanent |
-| `audit_logs` | Complete audit trail | Permanent |
+| Stage | Source | Transformation | Destination |
+|-------|--------|----------------|-------------|
+| Query | `ad_platform_connections` | Get active connections | Memory |
+| Auth | Memory | Refresh OAuth tokens if needed | Memory |
+| Pull | Platform APIs | Fetch metrics for date range | Memory |
+| Normalize | Memory | Map to unified schema | Memory |
+| Upsert | Memory | Insert/update metrics | `ad_platform_metrics` |
+| Fallback | CSV Upload | Process manual uploads | `ad_platform_metrics` |
+| Audit | Memory | Log ingestion | `workflow_audit_logs` |
 
-### Schema: workflow_executions
+### Platform Connectors
 
-```sql
-CREATE TABLE workflow_executions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  idempotency_key VARCHAR(255) UNIQUE NOT NULL,
-  workflow_name VARCHAR(100) NOT NULL,
-  result VARCHAR(20) NOT NULL, -- 'success', 'failed', 'skipped'
-  metadata JSONB,
-  executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+| Platform | API Version | Auth Method | Rate Limit |
+|----------|-------------|-------------|------------|
+| Meta Ads | v18.0 | OAuth 2.0 | 200 req/hour |
+| Google Ads | v14 | OAuth 2.0 | 15,000 req/day |
+| TikTok Ads | v1.3 | OAuth 2.0 | 100 req/min |
 
-CREATE INDEX idx_workflow_executions_key ON workflow_executions(idempotency_key);
-CREATE INDEX idx_workflow_executions_name ON workflow_executions(workflow_name);
-```
+### Unified Metrics Schema
 
-### Schema: n8n_dead_letters
-
-```sql
-CREATE TABLE n8n_dead_letters (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workflow_name VARCHAR(100) NOT NULL,
-  trigger_data JSONB NOT NULL,
-  error_message TEXT NOT NULL,
-  error_stack TEXT,
-  retry_count INT DEFAULT 0,
-  max_retries INT DEFAULT 3,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_retry_at TIMESTAMPTZ,
-  resolved_at TIMESTAMPTZ
-);
-
-CREATE INDEX idx_dead_letters_unresolved ON n8n_dead_letters(resolved_at) WHERE resolved_at IS NULL;
-```
-
----
-
-## Security Configuration
-
-### Webhook Authentication
-
-All webhooks use HMAC-SHA256 signature verification:
-
-```javascript
-const crypto = require('crypto');
-
-function verifyWebhook(body, signature, secret) {
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(JSON.stringify(body))
-    .digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expected)
-  );
+```typescript
+interface UnifiedMetrics {
+  tenant_id: string;
+  platform: 'meta' | 'google' | 'tiktok';
+  campaign_id: string;
+  ad_set_id?: string;
+  ad_id?: string;
+  date: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  conversions: number;
+  revenue: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  roas: number;
+  raw_data: object;  // Original platform response
+  ingested_at: string;
 }
 ```
 
-### Required Secrets
+### Trigger Configuration
 
-| Secret | Purpose | Rotation |
-|--------|---------|----------|
-| `N8N_WEBHOOK_SECRET` | Webhook signature | Quarterly |
-| `SUPABASE_SERVICE_KEY` | Database access | As needed |
-| `SMTP_PASS` | Email sending | As needed |
-| `ARAMEX_API_KEY` | Carrier integration | Per carrier policy |
-| `SMSA_API_KEY` | Carrier integration | Per carrier policy |
+```json
+{
+  "type": "cron",
+  "expression": "0 0 */3 * * *",
+  "timezone": "UTC",
+  "description": "Every 3 hours (adjustable 3-6h)",
+  "configurable": {
+    "env_var": "METRICS_INGESTION_INTERVAL_HOURS",
+    "min": 3,
+    "max": 6,
+    "default": 3
+  }
+}
+```
 
-### Access Control
+### CSV Fallback (Add-on)
 
-| Role | Permissions |
-|------|-------------|
-| n8n Service Account | Read/write to automation tables only |
-| Application | Full access via tRPC |
-| Admin | Direct database access |
+For platforms without API access, users can upload CSV exports:
+
+| Field | Required | Format |
+|-------|----------|--------|
+| `campaign_name` | Yes | String |
+| `date` | Yes | YYYY-MM-DD |
+| `impressions` | Yes | Integer |
+| `clicks` | Yes | Integer |
+| `spend` | Yes | Decimal |
+| `conversions` | No | Integer |
+| `revenue` | No | Decimal |
+
+### Idempotency
+
+| Key Format | Example | Storage |
+|------------|---------|---------|
+| `WF-002:{tenant_id}:{platform}:{date}` | `WF-002:t_123:meta:2024-01-15` | `workflow_executions` |
+
+### Failure Handling
+
+| Failure Type | Action | Retry |
+|--------------|--------|-------|
+| OAuth expired | Refresh token, retry | 1x |
+| Rate limited | Backoff, retry | 3x |
+| API error | Log, skip platform | No |
+| Parse error | Log, use partial data | No |
+
+### Audit Events
+
+| Event Type | Entity | Payload |
+|------------|--------|---------|
+| `METRICS_INGESTED` | tenant | `{platform, records_count, date_range}` |
+| `METRICS_FAILED` | tenant | `{platform, error, date_range}` |
 
 ---
 
-## Monitoring and Observability
+## WF-003: Decision Notification
+
+### Purpose
+
+Sends professional, client-facing notifications when new marketing decisions are made, ensuring stakeholders are informed of recommendations and required actions.
+
+### Data Flow
+
+| Stage | Source | Transformation | Destination |
+|-------|--------|----------------|-------------|
+| Trigger | Webhook / Polling | Receive new decision event | Memory |
+| Lookup | `marketing_decisions` | Get full decision details | Memory |
+| Lookup | `tenants` | Get notification preferences | Memory |
+| Format | Memory | Generate client-friendly summary | Memory |
+| Send | SMTP | Send email notification | External |
+| Store | Memory | Log notification | `notification_logs` |
+| Audit | Memory | Log event | `workflow_audit_logs` |
+
+### Trigger Configuration
+
+```json
+{
+  "triggers": [
+    {
+      "type": "webhook",
+      "path": "/api/n8n/decision-created",
+      "method": "POST",
+      "authentication": "hmac"
+    },
+    {
+      "type": "cron",
+      "expression": "0 */5 * * * *",
+      "description": "Poll for unnotified decisions every 5 min"
+    }
+  ]
+}
+```
+
+### Email Template
+
+```html
+Subject: [DeepSolution] Campaign Update: {{campaign_name}}
+
+Hi {{client_name}},
+
+Our AI has analyzed your campaign "{{campaign_name}}" and has a recommendation:
+
+**Recommendation:** {{action}}
+**Confidence:** {{confidence}}%
+
+**Summary:**
+{{client_explanation}}
+
+**Next Steps:**
+{{#if requires_approval}}
+Please review and approve this recommendation in your dashboard.
+{{else}}
+This change will be applied automatically in 24 hours unless you object.
+{{/if}}
+
+---
+DeepSolution Marketing Intelligence
+```
+
+### Notification Preferences
+
+| Preference | Options | Default |
+|------------|---------|---------|
+| `email_enabled` | true/false | true |
+| `email_frequency` | immediate/daily/weekly | immediate |
+| `min_confidence` | 0-100 | 70 |
+| `notify_on` | all/high-impact/critical | high-impact |
+
+### Idempotency
+
+| Key Format | Example | Storage |
+|------------|---------|---------|
+| `WF-003:{decision_id}:{channel}` | `WF-003:dec_123:email` | `workflow_executions` |
+
+### Failure Handling
+
+| Failure Type | Action | Retry |
+|--------------|--------|-------|
+| SMTP error | Retry with backoff | 3x |
+| Invalid email | Log, skip | No |
+| Template error | Use fallback template | No |
+
+### Audit Events
+
+| Event Type | Entity | Payload |
+|------------|--------|---------|
+| `NOTIFICATION_SENT` | decision | `{decision_id, channel, recipient}` |
+| `NOTIFICATION_FAILED` | decision | `{decision_id, channel, error}` |
+
+---
+
+## WF-004: Approval → Execute
+
+### Purpose
+
+When a client approves a marketing decision, this workflow executes the recommended changes on ad platforms (when APIs exist) or generates manual execution instructions.
+
+### Data Flow
+
+| Stage | Source | Transformation | Destination |
+|-------|--------|----------------|-------------|
+| Trigger | Webhook | Receive approval event | Memory |
+| Verify | Memory | Validate HMAC signature | Decision |
+| Check | `workflow_executions` | Verify idempotency | Decision |
+| Lookup | `marketing_decisions` | Get decision details | Memory |
+| Route | Memory | Check platform API availability | Decision |
+| Execute | Platform API | Apply changes (if API exists) | External |
+| Generate | Memory | Create manual instructions (if no API) | Memory |
+| Store | Memory | Log execution | `execution_logs` |
+| Notify | SMTP | Send confirmation | External |
+| Audit | Memory | Log event | `workflow_audit_logs` |
+
+### Trigger Configuration
+
+```json
+{
+  "type": "webhook",
+  "path": "/api/n8n/decision-approved",
+  "method": "POST",
+  "authentication": "hmac",
+  "headers": {
+    "X-DeepSolution-Signature": "required",
+    "X-DeepSolution-Timestamp": "required"
+  }
+}
+```
+
+### Execution Modes
+
+| Mode | Condition | Action |
+|------|-----------|--------|
+| `auto_execute` | Platform API connected | Apply changes via API |
+| `manual_instructions` | No API access | Generate step-by-step guide |
+| `hybrid` | Partial API access | Execute what's possible, guide the rest |
+
+### Manual Instruction Template
+
+```markdown
+## Manual Execution Required
+
+Campaign: {{campaign_name}}
+Platform: {{platform}}
+Decision: {{decision_id}}
+
+### Steps to Execute:
+
+1. Log into {{platform}} Ads Manager
+2. Navigate to Campaign: {{campaign_name}}
+3. Apply the following changes:
+   {{#each changes}}
+   - {{this.field}}: Change from {{this.old_value}} to {{this.new_value}}
+   {{/each}}
+4. Save changes
+5. Return to DeepSolution and mark as "Executed"
+
+### Deadline: {{deadline}}
+```
+
+### Idempotency
+
+| Key Format | Example | Storage |
+|------------|---------|---------|
+| `WF-004:{decision_id}:execute` | `WF-004:dec_123:execute` | `workflow_executions` |
+
+### Failure Handling
+
+| Failure Type | Action | Retry |
+|--------------|--------|-------|
+| Invalid signature | Reject, log security event | No |
+| Already executed | Return success (idempotent) | No |
+| API error | Fallback to manual instructions | No |
+| Partial failure | Execute what's possible, log rest | No |
+
+### Audit Events
+
+| Event Type | Entity | Payload |
+|------------|--------|---------|
+| `DECISION_EXECUTED` | decision | `{decision_id, mode, changes_applied}` |
+| `MANUAL_INSTRUCTIONS_GENERATED` | decision | `{decision_id, platform, steps_count}` |
+| `EXECUTION_FAILED` | decision | `{decision_id, error, partial_success}` |
+
+---
+
+## WF-005: Landing Page Publish Pipeline
+
+### Purpose
+
+Handles the publication of landing pages, including version management, URL generation, and client notification.
+
+### Data Flow
+
+| Stage | Source | Transformation | Destination |
+|-------|--------|----------------|-------------|
+| Trigger | Webhook | Receive publish request | Memory |
+| Verify | Memory | Validate signature + permissions | Decision |
+| Lookup | `landing_pages` | Get page details | Memory |
+| Validate | Memory | Check page is ready | Decision |
+| Publish | Memory | Generate published URL | Memory |
+| Update | Memory | Set status = published | `landing_pages` |
+| Store | Memory | Record published_url | `landing_pages` |
+| Notify | SMTP | Send publish confirmation | External |
+| Audit | Memory | Log event | `workflow_audit_logs` |
+
+### Trigger Configuration
+
+```json
+{
+  "type": "webhook",
+  "path": "/api/n8n/landing-page-publish",
+  "method": "POST",
+  "authentication": "hmac"
+}
+```
+
+### URL Generation
+
+| Environment | Pattern | Example |
+|-------------|---------|---------|
+| Production | `{tenant_slug}.deepsolution.app/{page_slug}` | `acme.deepsolution.app/summer-sale` |
+| Preview | `preview.deepsolution.app/{tenant_id}/{page_id}` | `preview.deepsolution.app/t_123/lp_456` |
+| Custom Domain | `{custom_domain}/{page_slug}` | `landing.acme.com/summer-sale` |
+
+### Publication Checklist
+
+| Check | Required | Action if Failed |
+|-------|----------|------------------|
+| Page status = review | Yes | Reject |
+| All sections visible | No | Warn |
+| SEO fields filled | No | Warn |
+| Theme configured | No | Use default |
+
+### Idempotency
+
+| Key Format | Example | Storage |
+|------------|---------|---------|
+| `WF-005:{page_id}:{version}:publish` | `WF-005:lp_123:3:publish` | `workflow_executions` |
+
+### Failure Handling
+
+| Failure Type | Action | Retry |
+|--------------|--------|-------|
+| Page not found | Reject with error | No |
+| Invalid status | Reject with error | No |
+| URL conflict | Generate unique slug | 1x |
+| Notification failed | Log, continue | No |
+
+### Audit Events
+
+| Event Type | Entity | Payload |
+|------------|--------|---------|
+| `LANDING_PAGE_PUBLISHED` | landing_page | `{page_id, version, published_url}` |
+| `LANDING_PAGE_UNPUBLISHED` | landing_page | `{page_id, version, reason}` |
+
+---
+
+## WF-006: Ops Alerts (Budget/Anomalies)
+
+### Purpose
+
+Monitors campaign performance for anomalies, budget issues, and performance degradation. Sends alerts and optionally triggers re-evaluation.
+
+### Data Flow
+
+| Stage | Source | Transformation | Destination |
+|-------|--------|----------------|-------------|
+| Query | `ad_platform_metrics` | Get recent metrics | Memory |
+| Analyze | Memory | Detect anomalies | Memory |
+| Check | Memory | Compare against thresholds | Decision |
+| Alert | SMTP | Send alert notification | External |
+| Flag | Memory | Mark campaign for review | `campaigns` |
+| Audit | Memory | Log alert | `workflow_audit_logs` |
+
+### Trigger Configuration
+
+```json
+{
+  "type": "cron",
+  "expression": "0 0 * * * *",
+  "timezone": "UTC",
+  "description": "Every hour"
+}
+```
+
+### Anomaly Detection Rules
+
+| Rule | Threshold | Severity | Action |
+|------|-----------|----------|--------|
+| Budget exhaustion | > 90% spent | Critical | Alert + Force review |
+| Spend spike | > 200% of daily average | High | Alert |
+| ROAS collapse | < 50% of baseline | Critical | Alert + Force review |
+| CTR drop | < 50% of baseline | Medium | Alert |
+| Creative fatigue | CTR declining 3+ days | Medium | Alert |
+| Conversion drop | < 30% of baseline | High | Alert |
+
+### Alert Template
+
+```html
+Subject: [DeepSolution Alert] {{severity}}: {{alert_type}} - {{campaign_name}}
+
+⚠️ ALERT: {{alert_type}}
+
+Campaign: {{campaign_name}}
+Severity: {{severity}}
+Detected at: {{timestamp}}
+
+**Details:**
+{{description}}
+
+**Current Value:** {{current_value}}
+**Expected Range:** {{expected_range}}
+
+**Recommended Action:**
+{{recommendation}}
+
+{{#if force_review}}
+A campaign re-evaluation has been automatically triggered.
+{{/if}}
+
+---
+DeepSolution Ops Monitoring
+```
+
+### Idempotency
+
+| Key Format | Example | Storage |
+|------------|---------|---------|
+| `WF-006:{campaign_id}:{alert_type}:{hour}` | `WF-006:camp_123:budget_exhaustion:2024-01-15T10` | `workflow_executions` |
+
+### Failure Handling
+
+| Failure Type | Action | Retry |
+|--------------|--------|-------|
+| Metrics unavailable | Skip, log warning | No |
+| Alert send failed | Retry with backoff | 3x |
+| Database error | Retry with backoff | 3x |
+
+### Audit Events
+
+| Event Type | Entity | Payload |
+|------------|--------|---------|
+| `OPS_ALERT_TRIGGERED` | campaign | `{campaign_id, alert_type, severity}` |
+| `FORCE_REVIEW_TRIGGERED` | campaign | `{campaign_id, reason}` |
+
+---
+
+## Database Tables Used
+
+### Core Tables
+
+| Table | Used By | Access |
+|-------|---------|--------|
+| `tenants` | WF-001, WF-002 | Read |
+| `campaigns` | WF-001, WF-006 | Read/Write |
+| `marketing_decisions` | WF-001, WF-003, WF-004 | Read/Write |
+| `ad_platform_metrics` | WF-002, WF-006 | Read/Write |
+| `ad_platform_connections` | WF-002 | Read |
+| `landing_pages` | WF-005 | Read/Write |
+| `notification_logs` | WF-003 | Write |
+| `execution_logs` | WF-004 | Write |
+
+### Audit Tables
+
+| Table | Purpose | Retention |
+|-------|---------|-----------|
+| `workflow_audit_logs` | All workflow events | 90 days |
+| `workflow_executions` | Idempotency tracking | 7 days |
+
+---
+
+## Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `N8N_WEBHOOK_SECRET` | HMAC signing secret | Yes |
+| `SUPABASE_URL` | Database connection | Yes |
+| `SUPABASE_SERVICE_KEY` | Database auth | Yes |
+| `SMTP_HOST` | Email server | Yes |
+| `SMTP_PORT` | Email port | Yes |
+| `SMTP_USER` | Email auth | Yes |
+| `SMTP_PASS` | Email auth | Yes |
+| `CAMPAIGN_EVAL_INTERVAL_HOURS` | WF-001 frequency | No (default: 6) |
+| `METRICS_INGESTION_INTERVAL_HOURS` | WF-002 frequency | No (default: 3) |
+
+---
+
+## Monitoring & Observability
 
 ### Health Checks
 
 | Endpoint | Purpose | Expected Response |
 |----------|---------|-------------------|
-| `/api/health` | Application health | `{ status: "ok" }` |
-| `/api/n8n/health` | n8n connectivity | `{ connected: true }` |
+| `GET /api/n8n/health` | n8n connectivity | `{"status": "ok"}` |
+| `GET /api/n8n/workflows` | List active workflows | Array of workflow IDs |
 
-### Key Metrics
+### Metrics to Track
 
-| Metric | Source | Alert Threshold |
-|--------|--------|-----------------|
-| Workflow execution time | n8n logs | > 30 seconds |
-| Dead letter count | `n8n_dead_letters` | > 10 unresolved |
-| Failed executions | `workflow_executions` | > 5% failure rate |
-| Stock alerts pending | `stock_alerts` | > 24 hours old |
-
-### Log Format
-
-```json
-{
-  "timestamp": "2024-01-15T10:30:00Z",
-  "workflow": "order-created-reserve-stock",
-  "execution_id": "exec_abc123",
-  "tenant_id": "tnt_xyz",
-  "status": "success",
-  "duration_ms": 245,
-  "input": { "order_id": "ord_123" },
-  "output": { "reservations": 3 }
-}
-```
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| `workflow_execution_time` | Duration per workflow | > 60s |
+| `workflow_failure_rate` | Failures / Total | > 5% |
+| `webhook_latency` | Time to process | > 5s |
+| `notification_delivery_rate` | Delivered / Sent | < 95% |
 
 ---
 
@@ -508,45 +721,20 @@ function verifyWebhook(body, signature, secret) {
 
 ### Backup Strategy
 
-| Component | Method | Frequency | Retention |
-|-----------|--------|-----------|-----------|
-| Database | pg_dump | Daily | 30 days |
-| n8n workflows | JSON export | Weekly | 90 days |
-| Secrets | Encrypted backup | Monthly | 1 year |
+| Component | Frequency | Retention |
+|-----------|-----------|-----------|
+| n8n workflows | On change | 30 versions |
+| Workflow credentials | Daily | 7 days |
+| Execution logs | Continuous | 90 days |
 
 ### Recovery Procedures
 
-**Database Recovery:**
-```bash
-pg_restore -d $DATABASE_URL backup.sql
-```
-
-**n8n Workflow Recovery:**
-```bash
-# Import workflow JSON via n8n CLI or UI
-n8n import:workflow --input=workflow.json
-```
-
-### Failover
-
-If n8n becomes unavailable:
-1. All webhooks return 503 (retry later)
-2. Cron jobs queue in n8n
-3. Manual execution via tRPC endpoints remains available
-4. No data loss due to idempotency
+1. **n8n Down**: Workflows queue in dead-letter, auto-retry on recovery
+2. **Database Down**: n8n pauses, resumes when connection restored
+3. **SMTP Down**: Notifications queue, retry with exponential backoff
 
 ---
 
-## Conclusion
-
-This document establishes complete authority over the automation layer. Every workflow is:
-
-1. **Documented** with full data lineage
-2. **Idempotent** to prevent duplicate processing
-3. **Auditable** with complete event logs
-4. **Recoverable** with proper failure handling
-5. **Secure** with authentication and access control
-
-The automation system operates independently of any AI services and can be maintained, modified, or replaced by any qualified engineer with access to this documentation.
-
-**You have full authority over this automation layer.**
+**Document Version:** 2.0
+**Last Updated:** December 2024
+**Author:** DeepSolution Engineering Team

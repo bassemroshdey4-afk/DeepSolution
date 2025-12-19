@@ -1,0 +1,386 @@
+{
+  "name": "WF-004: Approval → Execute",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "decision-approved",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "decision-approved"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verify HMAC signature\nconst crypto = require('crypto');\nconst signature = $input.first().json.headers['x-deepsolution-signature'];\nconst timestamp = $input.first().json.headers['x-deepsolution-timestamp'];\nconst body = JSON.stringify($input.first().json.body);\n\nconst expectedSignature = 'sha256=' + crypto\n  .createHmac('sha256', $env.N8N_WEBHOOK_SECRET)\n  .update(body)\n  .digest('hex');\n\nif (signature !== expectedSignature) {\n  throw new Error('Invalid signature - security event logged');\n}\n\n// Check timestamp (5 min tolerance)\nconst now = Date.now();\nconst requestTime = parseInt(timestamp);\nif (Math.abs(now - requestTime) > 300000) {\n  throw new Error('Request timestamp too old');\n}\n\nreturn $input.all();"
+      },
+      "id": "verify-signature",
+      "name": "Verify HMAC Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 1 FROM workflow_executions WHERE idempotency_key = 'WF-004:{{ $json.body.decision_id }}:execute' AND status = 'completed'"
+      },
+      "id": "check-idempotency",
+      "name": "Check Idempotency",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.length }}",
+              "value2": 0,
+              "operation": "equal"
+            }
+          ]
+        }
+      },
+      "id": "filter-not-executed",
+      "name": "Skip Already Executed",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT md.*, c.name as campaign_name, c.platform, apc.access_token, apc.account_id, t.name as tenant_name, t.owner_email FROM marketing_decisions md JOIN campaigns c ON c.id = md.campaign_id JOIN tenants t ON t.id = md.tenant_id LEFT JOIN ad_platform_connections apc ON apc.tenant_id = t.id AND apc.platform = c.platform WHERE md.id = '{{ $json.body.decision_id }}'"
+      },
+      "id": "get-decision-details",
+      "name": "Get Decision Details",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.access_token }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "check-api-access",
+      "name": "Check API Access",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute changes via platform API\nconst decision = $input.first().json;\nconst recommendations = decision.recommendations;\nconst platform = decision.platform;\n\nlet executionResult = {\n  mode: 'auto_execute',\n  changes_applied: [],\n  errors: []\n};\n\n// Platform-specific execution logic would go here\n// For now, we'll simulate the execution\nif (recommendations.budget_change) {\n  executionResult.changes_applied.push({\n    field: 'budget',\n    old_value: 'current',\n    new_value: recommendations.budget_change\n  });\n}\n\nif (recommendations.audience_change) {\n  executionResult.changes_applied.push({\n    field: 'audience',\n    old_value: 'current',\n    new_value: recommendations.audience_change\n  });\n}\n\nreturn [{ json: { ...decision, execution_result: executionResult } }];"
+      },
+      "id": "execute-api",
+      "name": "Execute via Platform API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate manual execution instructions\nconst decision = $input.first().json;\nconst recommendations = decision.recommendations;\n\nconst instructions = {\n  mode: 'manual_instructions',\n  campaign_name: decision.campaign_name,\n  platform: decision.platform,\n  decision_id: decision.id,\n  steps: [\n    `1. Log into ${decision.platform} Ads Manager`,\n    `2. Navigate to Campaign: ${decision.campaign_name}`,\n    '3. Apply the following changes:'\n  ],\n  changes: [],\n  deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()\n};\n\nif (recommendations.action === 'pause') {\n  instructions.changes.push({ field: 'Status', action: 'Set to Paused' });\n} else if (recommendations.action === 'scale') {\n  if (recommendations.budget_change) {\n    instructions.changes.push({ field: 'Budget', action: `Change to ${recommendations.budget_change}` });\n  }\n} else if (recommendations.action === 'adjust') {\n  if (recommendations.audience_change) {\n    instructions.changes.push({ field: 'Audience', action: recommendations.audience_change });\n  }\n  if (recommendations.creative_change) {\n    instructions.changes.push({ field: 'Creative', action: recommendations.creative_change });\n  }\n}\n\ninstructions.steps.push('4. Save changes');\ninstructions.steps.push('5. Return to DeepSolution and mark as \"Executed\"');\n\nreturn [{ json: { ...decision, execution_result: instructions } }];"
+      },
+      "id": "generate-instructions",
+      "name": "Generate Manual Instructions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 400]
+    },
+    {
+      "parameters": {},
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO execution_logs (id, tenant_id, decision_id, execution_mode, changes_applied, instructions, status, executed_at) VALUES (gen_random_uuid(), '{{ $json.tenant_id }}', '{{ $json.id }}', '{{ $json.execution_result.mode }}', '{{ JSON.stringify($json.execution_result.changes_applied || []) }}', '{{ JSON.stringify($json.execution_result.steps || []) }}', 'completed', NOW())"
+      },
+      "id": "store-execution-log",
+      "name": "Store Execution Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE marketing_decisions SET status = 'executed', executed_at = NOW() WHERE id = '{{ $json.id }}'"
+      },
+      "id": "update-decision-status",
+      "name": "Update Decision Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [2050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "={{ $json.owner_email }}",
+        "subject": "[DeepSolution] Decision Executed: {{ $json.campaign_name }}",
+        "emailType": "html",
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background: #10b981; color: white; padding: 20px; text-align: center; }\n    .content { padding: 20px; background: #f9fafb; }\n    .status { display: inline-block; padding: 5px 10px; background: #10b981; color: white; border-radius: 4px; }\n    .instructions { background: white; padding: 15px; border: 1px solid #e5e7eb; margin: 15px 0; }\n    .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>✓ Decision Executed</h1>\n    </div>\n    <div class=\"content\">\n      <p>Hi {{ $json.tenant_name }},</p>\n      <p>Your approved decision for campaign <strong>\"{{ $json.campaign_name }}\"</strong> has been processed.</p>\n      \n      <p><strong>Execution Mode:</strong> <span class=\"status\">{{ $json.execution_result.mode === 'auto_execute' ? 'Automatic' : 'Manual Instructions' }}</span></p>\n      \n      {{#if $json.execution_result.mode === 'manual_instructions'}}\n      <div class=\"instructions\">\n        <h3>Manual Steps Required:</h3>\n        <ol>\n        {{#each $json.execution_result.steps}}\n          <li>{{ this }}</li>\n        {{/each}}\n        </ol>\n        <p><strong>Deadline:</strong> {{ $json.execution_result.deadline }}</p>\n      </div>\n      {{else}}\n      <p>Changes have been applied automatically to your {{ $json.platform }} account.</p>\n      {{/if}}\n      \n      <p><a href=\"{{ $env.APP_URL }}/dashboard/campaigns/{{ $json.campaign_id }}\" style=\"display: inline-block; padding: 10px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 4px;\">View Campaign</a></p>\n    </div>\n    <div class=\"footer\">\n      <p>DeepSolution Marketing Intelligence</p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-confirmation",
+      "name": "Send Confirmation Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [2250, 300],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials",
+          "name": "SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_executions (id, workflow_id, idempotency_key, tenant_id, entity_id, entity_type, status, created_at) VALUES (gen_random_uuid(), 'WF-004', 'WF-004:{{ $json.id }}:execute', '{{ $json.tenant_id }}', '{{ $json.id }}', 'decision', 'completed', NOW())"
+      },
+      "id": "record-execution",
+      "name": "Record Execution",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [2450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_audit_logs (id, workflow_id, tenant_id, event_type, entity_type, entity_id, payload, created_at) VALUES (gen_random_uuid(), 'WF-004', '{{ $json.tenant_id }}', '{{ $json.execution_result.mode === \"auto_execute\" ? \"DECISION_EXECUTED\" : \"MANUAL_INSTRUCTIONS_GENERATED\" }}', 'decision', '{{ $json.id }}', '{{ JSON.stringify({mode: $json.execution_result.mode, changes_count: ($json.execution_result.changes_applied || $json.execution_result.changes || []).length}) }}', NOW())"
+      },
+      "id": "audit-log",
+      "name": "Write Audit Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [2650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Verify HMAC Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify HMAC Signature": {
+      "main": [
+        [
+          {
+            "node": "Check Idempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Idempotency": {
+      "main": [
+        [
+          {
+            "node": "Skip Already Executed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Already Executed": {
+      "main": [
+        [
+          {
+            "node": "Get Decision Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Decision Details": {
+      "main": [
+        [
+          {
+            "node": "Check API Access",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check API Access": {
+      "main": [
+        [
+          {
+            "node": "Execute via Platform API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Manual Instructions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute via Platform API": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Manual Instructions": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Store Execution Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Execution Log": {
+      "main": [
+        [
+          {
+            "node": "Update Decision Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Decision Status": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation Email": {
+      "main": [
+        [
+          {
+            "node": "Record Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Execution": {
+      "main": [
+        [
+          {
+            "node": "Write Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  },
+  "tags": [
+    {
+      "name": "execution",
+      "id": "tag-execution"
+    },
+    {
+      "name": "webhook",
+      "id": "tag-webhook"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-12-19T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

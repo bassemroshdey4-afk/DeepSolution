@@ -1,0 +1,312 @@
+{
+  "name": "WF-005: Landing Page Publish Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "landing-page-publish",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "landing-page-publish"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verify HMAC signature\nconst crypto = require('crypto');\nconst signature = $input.first().json.headers['x-deepsolution-signature'];\nconst timestamp = $input.first().json.headers['x-deepsolution-timestamp'];\nconst body = JSON.stringify($input.first().json.body);\n\nconst expectedSignature = 'sha256=' + crypto\n  .createHmac('sha256', $env.N8N_WEBHOOK_SECRET)\n  .update(body)\n  .digest('hex');\n\nif (signature !== expectedSignature) {\n  throw new Error('Invalid signature');\n}\n\nreturn $input.all();"
+      },
+      "id": "verify-signature",
+      "name": "Verify HMAC Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 1 FROM workflow_executions WHERE idempotency_key = 'WF-005:{{ $json.body.page_id }}:{{ $json.body.version }}:publish'"
+      },
+      "id": "check-idempotency",
+      "name": "Check Idempotency",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.length }}",
+              "value2": 0,
+              "operation": "equal"
+            }
+          ]
+        }
+      },
+      "id": "filter-not-published",
+      "name": "Skip Already Published",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT lp.*, t.slug as tenant_slug, t.name as tenant_name, t.owner_email, t.custom_domain FROM landing_pages lp JOIN tenants t ON t.id = lp.tenant_id WHERE lp.id = '{{ $json.body.page_id }}' AND lp.version = {{ $json.body.version }}"
+      },
+      "id": "get-page-details",
+      "name": "Get Page Details",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "review",
+              "operation": "equal"
+            }
+          ]
+        }
+      },
+      "id": "validate-status",
+      "name": "Validate Page Status",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate published URL\nconst page = $input.first().json;\nlet publishedUrl;\n\nif (page.custom_domain) {\n  publishedUrl = `https://${page.custom_domain}/${page.slug}`;\n} else {\n  publishedUrl = `https://${page.tenant_slug}.deepsolution.app/${page.slug}`;\n}\n\n// Generate preview URL\nconst previewUrl = `https://preview.deepsolution.app/${page.tenant_id}/${page.id}`;\n\nreturn [{ \n  json: { \n    ...page, \n    published_url: publishedUrl,\n    preview_url: previewUrl\n  } \n}];"
+      },
+      "id": "generate-url",
+      "name": "Generate Published URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE landing_pages SET status = 'published', published_url = '{{ $json.published_url }}', published_at = NOW(), published_by = '{{ $json.body?.user_id || \"system\" }}' WHERE id = '{{ $json.id }}' AND version = {{ $json.version }}"
+      },
+      "id": "update-page-status",
+      "name": "Update Page Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM_EMAIL }}",
+        "toEmail": "={{ $json.owner_email }}",
+        "subject": "[DeepSolution] Landing Page Published: {{ $json.name }}",
+        "emailType": "html",
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background: #10b981; color: white; padding: 20px; text-align: center; }\n    .content { padding: 20px; background: #f9fafb; }\n    .url-box { background: white; padding: 15px; border: 1px solid #e5e7eb; margin: 15px 0; word-break: break-all; }\n    .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>🎉 Landing Page Published!</h1>\n    </div>\n    <div class=\"content\">\n      <p>Hi {{ $json.tenant_name }},</p>\n      <p>Your landing page <strong>\"{{ $json.name }}\"</strong> has been successfully published!</p>\n      \n      <div class=\"url-box\">\n        <strong>Live URL:</strong><br>\n        <a href=\"{{ $json.published_url }}\">{{ $json.published_url }}</a>\n      </div>\n      \n      <p><strong>Version:</strong> {{ $json.version }}</p>\n      <p><strong>Published at:</strong> {{ $now.format('yyyy-MM-dd HH:mm') }}</p>\n      \n      <p>You can share this URL with your audience or use it in your ad campaigns.</p>\n      \n      <p>\n        <a href=\"{{ $json.published_url }}\" style=\"display: inline-block; padding: 10px 20px; background: #10b981; color: white; text-decoration: none; border-radius: 4px; margin-right: 10px;\">View Live Page</a>\n        <a href=\"{{ $env.APP_URL }}/dashboard/landing-pages/{{ $json.id }}\" style=\"display: inline-block; padding: 10px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 4px;\">Edit Page</a>\n      </p>\n    </div>\n    <div class=\"footer\">\n      <p>DeepSolution Marketing Intelligence</p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-notification",
+      "name": "Send Publish Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1850, 300],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials",
+          "name": "SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_executions (id, workflow_id, idempotency_key, tenant_id, entity_id, entity_type, status, created_at) VALUES (gen_random_uuid(), 'WF-005', 'WF-005:{{ $json.id }}:{{ $json.version }}:publish', '{{ $json.tenant_id }}', '{{ $json.id }}', 'landing_page', 'completed', NOW())"
+      },
+      "id": "record-execution",
+      "name": "Record Execution",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [2050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_audit_logs (id, workflow_id, tenant_id, event_type, entity_type, entity_id, payload, created_at) VALUES (gen_random_uuid(), 'WF-005', '{{ $json.tenant_id }}', 'LANDING_PAGE_PUBLISHED', 'landing_page', '{{ $json.id }}', '{{ JSON.stringify({version: $json.version, published_url: $json.published_url}) }}', NOW())"
+      },
+      "id": "audit-log",
+      "name": "Write Audit Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [2250, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Verify HMAC Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify HMAC Signature": {
+      "main": [
+        [
+          {
+            "node": "Check Idempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Idempotency": {
+      "main": [
+        [
+          {
+            "node": "Skip Already Published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Already Published": {
+      "main": [
+        [
+          {
+            "node": "Get Page Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Page Details": {
+      "main": [
+        [
+          {
+            "node": "Validate Page Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Page Status": {
+      "main": [
+        [
+          {
+            "node": "Generate Published URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Published URL": {
+      "main": [
+        [
+          {
+            "node": "Update Page Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Page Status": {
+      "main": [
+        [
+          {
+            "node": "Send Publish Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Publish Notification": {
+      "main": [
+        [
+          {
+            "node": "Record Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Execution": {
+      "main": [
+        [
+          {
+            "node": "Write Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  },
+  "tags": [
+    {
+      "name": "landing-page",
+      "id": "tag-landing-page"
+    },
+    {
+      "name": "webhook",
+      "id": "tag-webhook"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-12-19T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

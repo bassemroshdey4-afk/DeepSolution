@@ -1,0 +1,325 @@
+{
+  "name": "WF-001: Campaign Re-Evaluation Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT t.id as tenant_id, t.name as tenant_name, c.id as campaign_id, c.name as campaign_name, c.last_evaluated_at, c.force_review FROM tenants t JOIN campaigns c ON c.tenant_id = t.id WHERE c.status = 'active' AND (c.force_review = true OR c.last_evaluated_at < NOW() - INTERVAL '6 hours' OR c.total_spend_since_review > 50)"
+      },
+      "id": "query-campaigns",
+      "name": "Query Campaigns Needing Review",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.campaign_id }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "filter-campaigns",
+      "name": "Filter Valid Campaigns",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 1 FROM workflow_executions WHERE idempotency_key = 'WF-001:{{ $json.tenant_id }}:{{ $json.campaign_id }}:{{ $now.format('yyyy-MM-dd') }}' AND created_at > NOW() - INTERVAL '1 day'"
+      },
+      "id": "check-idempotency",
+      "name": "Check Idempotency",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.length }}",
+              "value2": 0,
+              "operation": "equal"
+            }
+          ]
+        }
+      },
+      "id": "filter-not-executed",
+      "name": "Skip Already Executed",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CORE_API_URL }}/api/n8n/evaluate-campaign",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-DeepSolution-Signature",
+              "value": "={{ $evaluateExpression(\"crypto.createHmac('sha256', $env.N8N_WEBHOOK_SECRET).update(JSON.stringify({tenant_id: '\" + $json.tenant_id + \"', campaign_id: '\" + $json.campaign_id + \"'})).digest('hex')\") }}"
+            },
+            {
+              "name": "X-DeepSolution-Timestamp",
+              "value": "={{ $now.toMillis() }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id }}"
+            },
+            {
+              "name": "campaign_id",
+              "value": "={{ $json.campaign_id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "call-decision-engine",
+      "name": "Call Marketing Decision Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 300],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO marketing_decisions (id, tenant_id, campaign_id, decision_version, client_explanation, confidence, recommendations, next_check_at, created_at) VALUES (gen_random_uuid(), '{{ $json.tenant_id }}', '{{ $json.campaign_id }}', (SELECT COALESCE(MAX(decision_version), 0) + 1 FROM marketing_decisions WHERE campaign_id = '{{ $json.campaign_id }}'), '{{ $json.client_explanation }}', {{ $json.confidence }}, '{{ JSON.stringify($json.recommendations) }}', NOW() + INTERVAL '6 hours', NOW())"
+      },
+      "id": "store-decision",
+      "name": "Store Decision",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE campaigns SET last_evaluated_at = NOW(), force_review = false, total_spend_since_review = 0 WHERE id = '{{ $json.campaign_id }}'"
+      },
+      "id": "update-campaign",
+      "name": "Update Campaign",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_executions (id, workflow_id, idempotency_key, tenant_id, entity_id, entity_type, status, created_at) VALUES (gen_random_uuid(), 'WF-001', 'WF-001:{{ $json.tenant_id }}:{{ $json.campaign_id }}:{{ $now.format('yyyy-MM-dd') }}', '{{ $json.tenant_id }}', '{{ $json.campaign_id }}', 'campaign', 'completed', NOW())"
+      },
+      "id": "record-execution",
+      "name": "Record Execution",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_audit_logs (id, workflow_id, tenant_id, event_type, entity_type, entity_id, payload, created_at) VALUES (gen_random_uuid(), 'WF-001', '{{ $json.tenant_id }}', 'CAMPAIGN_EVALUATED', 'campaign', '{{ $json.campaign_id }}', '{{ JSON.stringify({decision_version: $json.decision_version, confidence: $json.confidence}) }}', NOW())"
+      },
+      "id": "audit-log",
+      "name": "Write Audit Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [2050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-db",
+          "name": "Supabase Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Query Campaigns Needing Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Campaigns Needing Review": {
+      "main": [
+        [
+          {
+            "node": "Filter Valid Campaigns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Valid Campaigns": {
+      "main": [
+        [
+          {
+            "node": "Check Idempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Idempotency": {
+      "main": [
+        [
+          {
+            "node": "Skip Already Executed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Already Executed": {
+      "main": [
+        [
+          {
+            "node": "Call Marketing Decision Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Marketing Decision Engine": {
+      "main": [
+        [
+          {
+            "node": "Store Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Decision": {
+      "main": [
+        [
+          {
+            "node": "Update Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Campaign": {
+      "main": [
+        [
+          {
+            "node": "Record Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Execution": {
+      "main": [
+        [
+          {
+            "node": "Write Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "marketing",
+      "id": "tag-marketing"
+    },
+    {
+      "name": "scheduled",
+      "id": "tag-scheduled"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-12-19T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

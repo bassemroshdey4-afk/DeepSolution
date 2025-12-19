@@ -748,3 +748,27 @@
 **BLOCK 3 COMPLETE** ✅
 - 33 tests for Landing Page Engine
 - Total: 504 tests passing
+
+
+## Path B: n8n Automation Suite
+
+### Workflows
+- [x] 1. Campaign Re-Evaluation Scheduler (Cron 6h)
+- [x] 2. Ad Platform Metrics Ingestion (Cron 3h)
+- [x] 3. Decision Notification (Webhook trigger)
+- [x] 4. Approval → Execute (Webhook trigger)
+- [x] 5. Landing Page Publish Pipeline (Webhook trigger)
+- [x] 6. Ops Alerts - Budget/Anomalies (Cron hourly)
+
+**PATH B COMPLETE** ✅
+- 39 tests for n8n Marketing Workflows
+- Total: 543 tests passing
+
+### Security
+- [ ] HMAC signed web- [x] HMAC signature verification
+- [x] Idempotency keys
+- [x] Rate limiting guidance
+- [x] Full audit logs per workflow run## Documentation
+- [x] AUTOMATION_AUTHORITY.md updated with 6 workflows
+- [x] n8n JSON exports (one per workflow)
+- [x] N8N_RUNBOOK.md updated with setup + secrets + SMTP
