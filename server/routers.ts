@@ -11,6 +11,7 @@ import { shippingRouter } from "./shippingRouter";
 import { carrierPerformanceRouter } from "./carrierPerformanceRouter";
 import { shippingIntegrationsRouter } from "./shippingIntegrationsRouter";
 import { smartRoutingRouter } from "./smartRoutingRouter";
+import { profitRouter } from "./profitRouter";
 import { publicProcedure, protectedProcedure, router, tenantProcedure } from "./_core/trpc";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
@@ -27,6 +28,7 @@ export const appRouter = router({
   carrierPerformance: carrierPerformanceRouter,
   shippingIntegrations: shippingIntegrationsRouter,
   smartRouting: smartRoutingRouter,
+  profit: profitRouter,
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),

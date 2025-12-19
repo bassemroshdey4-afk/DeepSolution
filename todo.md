@@ -408,4 +408,55 @@
 ### 5. Testing ✅
 - [x] 38 اختبار Vitest
 - [x] 215 اختبار إجمالي
+- [x] checkpoint (595445c1)
+
+
+### Profit Intelligence Engine (Per-Order P&L) ✅
+### 1. Data Model ✅
+- [x] order_costs table (cogs, shipping_cost, cod_fee, gateway_fee, return_cost, ad_spend, ai_cost)
+- [x] order_pnl table/view (revenue, total_cost, net_profit, margin, status, loss_reasons)
+
+### 2. Revenue Rules ✅
+- [x] delivered + prepaid = confirmed
+- [x] delivered + COD collected = confirmed
+- [x] failed/returned = adjusted revenue (0)
+
+### 3. Cost Sources ✅
+- [x] shipping_cost from shipments table
+- [x] cod_fee (configurable %)
+- [x] ai_cost from usage logs (configurable rate)
+- [x] ad_spend allocation (from campaign_daily_spend)
+- [x] platform_fee from config
+
+### 4. Recomputation ✅
+- [x] computeOrderPnL API
+- [x] batchRecompute API (all orders)
+- [x] إعادة الحساب عند تغيير الحالة
+
+### 5. Insights ✅
+- [x] top 3 loss reasons per order
+- [x] structured output (lossReasons array)
+
+### 6. Super Admin ✅
+- [x] overrideCost API
+- [x] force recompute
+
+### 7. UI ✅
+- [x] /profit - Orders P&L list view
+- [x] profit/loss/pending status badges
+- [x] Products tab مع price insights
+- [x] COD Cashflow summary
+
+### 8. Testing ✅
+- [x] 48 اختبار Vitest
+- [x] 263 اختبار إجمالي
 - [ ] checkpoint
+
+### Extension: Product & Time Analytics ✅
+- [x] getDailySnapshots API
+- [x] listProductSnapshots API
+- [x] Product Financial Profile (avg costs, return_rate, failed_rate)
+- [x] Minimum Price Calculation (break-even, 10%, 20%)
+- [x] COD settlement delay tracking (avgSettlementDays)
+- [x] Profit pending until COD confirmed
+- [x] getInsights API (most profitable, losing, high shipping, high return)

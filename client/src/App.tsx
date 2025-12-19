@@ -22,6 +22,7 @@ import AIAddons from "./pages/AIAddons";
 import ContentWriter from "./pages/ContentWriter";
 import AIPipeline from "./pages/AIPipeline";
 import Integrations from "./pages/Integrations";
+import ProfitAnalytics from "./pages/ProfitAnalytics";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -90,6 +91,7 @@ function Router() {
       <Route path="/content-writer">{() => <ProtectedRoute component={ContentWriter} />}</Route>
       <Route path="/ai-pipeline">{() => <ProtectedRoute component={AIPipeline} />}</Route>
       <Route path="/integrations">{() => <ProtectedRoute component={Integrations} />}</Route>
+      <Route path="/profit">{() => <ProtectedRoute component={ProfitAnalytics} />}</Route>
       <Route>
         <Redirect to="/" />
       </Route>
