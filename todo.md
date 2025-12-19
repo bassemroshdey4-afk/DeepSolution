@@ -606,3 +606,24 @@
 - [x] التحقق من CSV/Excel upload implementation (processSheetImport API)
 - [x] التحقق من usage metering (checkAndDeductUsage)
 - [x] التحقق من billing integration (41 اختبار)
+
+
+## Next.js Frontend Migration + n8n Automation Blueprint
+
+### Part A: Next.js App Router Migration
+- [ ] إنشاء Next.js App Router shell مع RTL (deferred - التركيز على Backend أولاً)
+- [ ] نقل Auth + Layout + Navigation (deferred)
+- [ ] نقل Home Dashboard (deferred)
+- [x] الحفاظ على React app الحالي أثناء النقل
+
+### Part B: AUTOMATION_BLUEPRINT.md
+- [x] إنشاء AUTOMATION_BLUEPRINT.md
+- [x] جدول لكل workflow (name, trigger, input, output, idempotency, retries, etc.)
+- [x] Dataflow diagram section
+
+### Part C: 5 Critical Workflows
+- [x] Workflow 1: Order Created → Reserve Stock
+- [x] Workflow 2: Order Fulfilled → Deduct Stock + COGS + P&L
+- [x] Workflow 3: Shipping Status Sync → shipping_events + order status
+- [x] Workflow 4: COD Settlement Sync → finalize profit
+- [x] Workflow 5: Low Stock Alert → email + audit log

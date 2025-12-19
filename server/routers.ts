@@ -14,6 +14,7 @@ import { smartRoutingRouter } from "./smartRoutingRouter";
 import { profitRouter, profitTruthRouter } from "./profitRouter";
 import { inventoryRouter } from "./inventoryRouter";
 import { auditLogRouter } from "./auditLogRouter";
+import { n8nWorkflowsRouter } from "./n8nWorkflowsRouter";
 import { publicProcedure, protectedProcedure, router, tenantProcedure } from "./_core/trpc";
 import * as db from "./db";
 import { invokeLLM } from "./_core/llm";
@@ -34,6 +35,7 @@ export const appRouter = router({
   profitTruth: profitTruthRouter,
   inventory: inventoryRouter,
   auditLog: auditLogRouter,
+  n8nWorkflows: n8nWorkflowsRouter,
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
