@@ -382,3 +382,30 @@
 - [x] 40 اختبار Vitest
 - [x] 177 اختبار إجمالي
 - [ ] checkpoint
+
+
+## Smart Routing Engine ✅
+### 1. Scoring Engine ✅
+- [x] أوزان قابلة للتكوين (6 عوامل مجموعها = 1)
+- [x] حساب score per carrier (weighted)
+- [x] دعم region performance bonus
+
+### 2. Recommendation Engine ✅
+- [x] إرجاع best carrier + backup
+- [x] confidence score (high/medium/low)
+- [x] human-readable reasoning (عربي + إنجليزي)
+
+### 3. Order Integration ✅
+- [x] getRecommendation API
+- [x] saveDecision API
+- [x] حفظ: recommended_carrier, chosen_carrier, score, confidence, reasoning, overridden_by
+
+### 4. Rules & Overrides ✅
+- [x] فلترة COD (carriers بأداء COD >= 60%)
+- [x] Super Admin: setCarrierOverride (force/disable)
+- [x] Super Admin: updateWeights
+
+### 5. Testing ✅
+- [x] 38 اختبار Vitest
+- [x] 215 اختبار إجمالي
+- [ ] checkpoint
