@@ -876,3 +876,389 @@ export const profitRouter = router({
       return { success: true };
     }),
 });
+
+
+// ============================================
+// Profit Truth Engine - Estimated vs Finalized
+// ============================================
+
+interface ProfitTruth {
+  orderId: string;
+  estimatedProfit: number;
+  finalizedProfit: number | null;
+  isFinalized: boolean;
+  finalizationReason: string | null;
+  estimatedAt: string;
+  finalizedAt: string | null;
+}
+
+interface AggregatedProfitTruth {
+  period: string;
+  estimatedRevenue: number;
+  finalizedRevenue: number;
+  estimatedProfit: number;
+  finalizedProfit: number;
+  pendingCount: number;
+  finalizedCount: number;
+  finalizationRate: number;
+}
+
+// In-memory store for profit truth (fallback)
+const profitTruthStore: Map<string, Map<string, ProfitTruth>> = new Map();
+
+// Helper: Get or compute profit truth for an order
+async function getOrderProfitTruth(
+  tenantId: string,
+  orderId: string
+): Promise<ProfitTruth | null> {
+  // Get order
+  const { data: order } = await supabaseAdmin
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .eq("tenant_id", tenantId)
+    .single();
+
+  if (!order) return null;
+
+  // Get config and calculate costs
+  const config = await getTenantProfitConfig(tenantId);
+  const costs = await calculateOrderCosts(tenantId, orderId, config);
+  
+  // Get shipment
+  const { data: shipment } = await supabaseAdmin
+    .from("shipments")
+    .select("*")
+    .eq("order_id", orderId)
+    .single();
+
+  // Compute P&L
+  const pnl = calculateOrderPnL(order, costs, shipment);
+
+  // Check if finalized
+  const isDelivered = order.status === "delivered" || order.shipping_status === "DELIVERED";
+  const isFailed = order.status === "failed" || order.status === "cancelled";
+  const isReturned = order.status === "returned";
+
+  // For COD orders, check if collected
+  const isCOD = order.payment_method === "cod";
+  let codCollected = false;
+  if (isCOD && isDelivered) {
+    // Check shipment for COD collection
+    const { data: shipment } = await supabaseAdmin
+      .from("shipments")
+      .select("cod_collected")
+      .eq("order_id", orderId)
+      .single();
+    codCollected = shipment?.cod_collected === true;
+  }
+
+  // Determine finalization
+  let isFinalized = false;
+  let finalizationReason: string | null = null;
+  let finalizedProfit: number | null = null;
+
+  if (isReturned) {
+    isFinalized = true;
+    finalizationReason = "order_returned";
+    finalizedProfit = pnl.netProfit;
+  } else if (isFailed) {
+    isFinalized = true;
+    finalizationReason = "delivery_failed";
+    finalizedProfit = pnl.netProfit;
+  } else if (isDelivered) {
+    if (isCOD) {
+      if (codCollected) {
+        isFinalized = true;
+        finalizationReason = "cod_collected";
+        finalizedProfit = pnl.netProfit;
+      } else {
+        // COD pending
+        isFinalized = false;
+        finalizationReason = null;
+      }
+    } else {
+      // Prepaid - finalized on delivery
+      isFinalized = true;
+      finalizationReason = "prepaid_delivered";
+      finalizedProfit = pnl.netProfit;
+    }
+  }
+
+  return {
+    orderId,
+    estimatedProfit: pnl.netProfit,
+    finalizedProfit,
+    isFinalized,
+    finalizationReason,
+    estimatedAt: pnl.computedAt,
+    finalizedAt: isFinalized ? new Date().toISOString() : null,
+  };
+}
+
+// Add to router
+export const profitTruthRouter = router({
+  // Get profit truth for a single order
+  getOrderTruth: tenantProcedure
+    .input(z.object({ orderId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return await getOrderProfitTruth(ctx.tenantId, input.orderId);
+    }),
+
+  // Get aggregated profit truth by period
+  getAggregatedTruth: tenantProcedure
+    .input(z.object({
+      groupBy: z.enum(["day", "week", "month"]).default("day"),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { data: orders } = await supabaseAdmin
+        .from("orders")
+        .select("*")
+        .eq("tenant_id", ctx.tenantId)
+        .order("created_at", { ascending: false })
+        .limit(500);
+
+      if (!orders?.length) {
+        return { aggregations: [], summary: { estimatedTotal: 0, finalizedTotal: 0, pendingTotal: 0 } };
+      }
+
+      // Group by period
+      const groups: Map<string, {
+        orders: any[];
+        estimatedRevenue: number;
+        finalizedRevenue: number;
+        estimatedProfit: number;
+        finalizedProfit: number;
+        pendingCount: number;
+        finalizedCount: number;
+      }> = new Map();
+
+      for (const order of orders) {
+        const date = new Date(order.created_at);
+        let period: string;
+        
+        if (input.groupBy === "day") {
+          period = date.toISOString().split("T")[0];
+        } else if (input.groupBy === "week") {
+          const weekStart = new Date(date);
+          weekStart.setDate(date.getDate() - date.getDay());
+          period = weekStart.toISOString().split("T")[0];
+        } else {
+          period = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        }
+
+        if (!groups.has(period)) {
+          groups.set(period, {
+            orders: [],
+            estimatedRevenue: 0,
+            finalizedRevenue: 0,
+            estimatedProfit: 0,
+            finalizedProfit: 0,
+            pendingCount: 0,
+            finalizedCount: 0,
+          });
+        }
+
+        const group = groups.get(period)!;
+        group.orders.push(order);
+
+        // Compute truth for this order
+        const truth = await getOrderProfitTruth(ctx.tenantId, order.id);
+        if (truth) {
+          group.estimatedRevenue += order.total || 0;
+          group.estimatedProfit += truth.estimatedProfit;
+          
+          if (truth.isFinalized) {
+            group.finalizedRevenue += order.total || 0;
+            group.finalizedProfit += truth.finalizedProfit || 0;
+            group.finalizedCount++;
+          } else {
+            group.pendingCount++;
+          }
+        }
+      }
+
+      // Convert to array
+      const aggregations: AggregatedProfitTruth[] = [];
+      let estimatedTotal = 0;
+      let finalizedTotal = 0;
+      let pendingTotal = 0;
+
+      for (const [period, group] of Array.from(groups)) {
+        const total = group.finalizedCount + group.pendingCount;
+        aggregations.push({
+          period,
+          estimatedRevenue: Math.round(group.estimatedRevenue * 100) / 100,
+          finalizedRevenue: Math.round(group.finalizedRevenue * 100) / 100,
+          estimatedProfit: Math.round(group.estimatedProfit * 100) / 100,
+          finalizedProfit: Math.round(group.finalizedProfit * 100) / 100,
+          pendingCount: group.pendingCount,
+          finalizedCount: group.finalizedCount,
+          finalizationRate: total > 0 ? Math.round((group.finalizedCount / total) * 100) : 0,
+        });
+
+        estimatedTotal += group.estimatedProfit;
+        finalizedTotal += group.finalizedProfit;
+        pendingTotal += group.estimatedProfit - group.finalizedProfit;
+      }
+
+      // Sort by period descending
+      aggregations.sort((a, b) => b.period.localeCompare(a.period));
+
+      return {
+        aggregations,
+        summary: {
+          estimatedTotal: Math.round(estimatedTotal * 100) / 100,
+          finalizedTotal: Math.round(finalizedTotal * 100) / 100,
+          pendingTotal: Math.round(pendingTotal * 100) / 100,
+        },
+      };
+    }),
+
+  // Get profit truth by product
+  getProductTruth: tenantProcedure
+    .input(z.object({
+      productId: z.string().optional(),
+      limit: z.number().min(1).max(100).default(20),
+    }))
+    .query(async ({ ctx, input }) => {
+      // Get products
+      let productsQuery = supabaseAdmin
+        .from("products")
+        .select("id, name, sku, price")
+        .eq("tenant_id", ctx.tenantId);
+
+      if (input.productId) {
+        productsQuery = productsQuery.eq("id", input.productId);
+      }
+
+      const { data: products } = await productsQuery.limit(input.limit);
+
+      if (!products?.length) {
+        return { products: [] };
+      }
+
+      const productTruths = [];
+
+      for (const product of products) {
+        // Get order items for this product
+        const { data: orderItems } = await supabaseAdmin
+          .from("order_items")
+          .select("order_id, quantity")
+          .eq("product_id", product.id)
+          .limit(100);
+
+        if (!orderItems?.length) {
+          productTruths.push({
+            productId: product.id,
+            productName: product.name,
+            sku: product.sku,
+            ordersCount: 0,
+            estimatedProfit: 0,
+            finalizedProfit: 0,
+            pendingProfit: 0,
+            finalizationRate: 0,
+          });
+          continue;
+        }
+
+        let estimatedProfit = 0;
+        let finalizedProfit = 0;
+        let finalizedCount = 0;
+
+        for (const item of orderItems) {
+          const truth = await getOrderProfitTruth(ctx.tenantId, item.order_id);
+          if (truth) {
+            estimatedProfit += truth.estimatedProfit;
+            if (truth.isFinalized) {
+              finalizedProfit += truth.finalizedProfit || 0;
+              finalizedCount++;
+            }
+          }
+        }
+
+        productTruths.push({
+          productId: product.id,
+          productName: product.name,
+          sku: product.sku,
+          ordersCount: orderItems.length,
+          estimatedProfit: Math.round(estimatedProfit * 100) / 100,
+          finalizedProfit: Math.round(finalizedProfit * 100) / 100,
+          pendingProfit: Math.round((estimatedProfit - finalizedProfit) * 100) / 100,
+          finalizationRate: orderItems.length > 0 
+            ? Math.round((finalizedCount / orderItems.length) * 100) 
+            : 0,
+        });
+      }
+
+      // Sort by estimated profit descending
+      productTruths.sort((a, b) => b.estimatedProfit - a.estimatedProfit);
+
+      return { products: productTruths };
+    }),
+
+  // Get profit truth by channel (campaign/platform)
+  getChannelTruth: tenantProcedure
+    .query(async ({ ctx }) => {
+      // Get campaigns
+      const { data: campaigns } = await supabaseAdmin
+        .from("campaigns")
+        .select("id, name, platform, status")
+        .eq("tenant_id", ctx.tenantId)
+        .limit(50);
+
+      if (!campaigns?.length) {
+        return { channels: [] };
+      }
+
+      const channelTruths = [];
+
+      for (const campaign of campaigns) {
+        // Get orders attributed to this campaign
+        const { data: orders } = await supabaseAdmin
+          .from("orders")
+          .select("*")
+          .eq("tenant_id", ctx.tenantId)
+          .eq("campaign_id", campaign.id)
+          .limit(100);
+
+        let estimatedProfit = 0;
+        let finalizedProfit = 0;
+        let finalizedCount = 0;
+
+        if (orders) {
+          for (const order of orders) {
+            const truth = await getOrderProfitTruth(ctx.tenantId, order.id);
+            if (truth) {
+              estimatedProfit += truth.estimatedProfit;
+              if (truth.isFinalized) {
+                finalizedProfit += truth.finalizedProfit || 0;
+                finalizedCount++;
+              }
+            }
+          }
+        }
+
+        channelTruths.push({
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          platform: campaign.platform,
+          status: campaign.status,
+          ordersCount: orders?.length || 0,
+          estimatedProfit: Math.round(estimatedProfit * 100) / 100,
+          finalizedProfit: Math.round(finalizedProfit * 100) / 100,
+          pendingProfit: Math.round((estimatedProfit - finalizedProfit) * 100) / 100,
+          finalizationRate: orders?.length 
+            ? Math.round((finalizedCount / orders.length) * 100) 
+            : 0,
+        });
+      }
+
+      // Sort by estimated profit descending
+      channelTruths.sort((a, b) => b.estimatedProfit - a.estimatedProfit);
+
+      return { channels: channelTruths };
+    }),
+});

@@ -484,3 +484,259 @@ describe("Profit Intelligence Engine", () => {
     });
   });
 });
+
+
+describe("Profit Truth Engine", () => {
+  describe("1. Finalization Logic", () => {
+    const determineFinalization = (order: any, shipment: any) => {
+      const isDelivered = order.status === "delivered" || order.shipping_status === "DELIVERED";
+      const isFailed = order.status === "failed" || order.status === "cancelled";
+      const isReturned = order.status === "returned";
+      const isCOD = order.payment_method === "cod";
+      const codCollected = shipment?.cod_collected === true;
+
+      let isFinalized = false;
+      let finalizationReason: string | null = null;
+
+      if (isReturned) {
+        isFinalized = true;
+        finalizationReason = "order_returned";
+      } else if (isFailed) {
+        isFinalized = true;
+        finalizationReason = "delivery_failed";
+      } else if (isDelivered) {
+        if (isCOD) {
+          if (codCollected) {
+            isFinalized = true;
+            finalizationReason = "cod_collected";
+          } else {
+            isFinalized = false;
+            finalizationReason = null;
+          }
+        } else {
+          isFinalized = true;
+          finalizationReason = "prepaid_delivered";
+        }
+      }
+
+      return { isFinalized, finalizationReason };
+    };
+
+    it("should finalize prepaid delivered orders", () => {
+      const order = { status: "delivered", payment_method: "card" };
+      const result = determineFinalization(order, null);
+      expect(result.isFinalized).toBe(true);
+      expect(result.finalizationReason).toBe("prepaid_delivered");
+    });
+
+    it("should finalize COD orders when collected", () => {
+      const order = { status: "delivered", payment_method: "cod" };
+      const shipment = { cod_collected: true };
+      const result = determineFinalization(order, shipment);
+      expect(result.isFinalized).toBe(true);
+      expect(result.finalizationReason).toBe("cod_collected");
+    });
+
+    it("should NOT finalize COD orders when not collected", () => {
+      const order = { status: "delivered", payment_method: "cod" };
+      const shipment = { cod_collected: false };
+      const result = determineFinalization(order, shipment);
+      expect(result.isFinalized).toBe(false);
+      expect(result.finalizationReason).toBe(null);
+    });
+
+    it("should finalize returned orders", () => {
+      const order = { status: "returned", payment_method: "cod" };
+      const result = determineFinalization(order, null);
+      expect(result.isFinalized).toBe(true);
+      expect(result.finalizationReason).toBe("order_returned");
+    });
+
+    it("should finalize failed orders", () => {
+      const order = { status: "failed", payment_method: "cod" };
+      const result = determineFinalization(order, null);
+      expect(result.isFinalized).toBe(true);
+      expect(result.finalizationReason).toBe("delivery_failed");
+    });
+
+    it("should finalize cancelled orders", () => {
+      const order = { status: "cancelled", payment_method: "card" };
+      const result = determineFinalization(order, null);
+      expect(result.isFinalized).toBe(true);
+      expect(result.finalizationReason).toBe("delivery_failed");
+    });
+
+    it("should NOT finalize pending orders", () => {
+      const order = { status: "pending", payment_method: "cod" };
+      const result = determineFinalization(order, null);
+      expect(result.isFinalized).toBe(false);
+    });
+
+    it("should NOT finalize in_transit orders", () => {
+      const order = { status: "in_transit", payment_method: "card" };
+      const result = determineFinalization(order, null);
+      expect(result.isFinalized).toBe(false);
+    });
+  });
+
+  describe("2. Estimated vs Finalized Profit", () => {
+    const calculateProfitTruth = (order: any, costs: any, shipment: any) => {
+      const orderTotal = Number(order.total_amount) || 0;
+      const isDelivered = order.status === "delivered";
+      const isPrepaid = order.payment_method !== "cod";
+      const isCodCollected = shipment?.cod_collected === true;
+      const isReturned = order.status === "returned";
+      const isFailed = order.status === "failed";
+
+      // Calculate revenue
+      let revenue = 0;
+      if (isDelivered && (isPrepaid || isCodCollected)) {
+        revenue = orderTotal;
+      } else if (isReturned || isFailed) {
+        revenue = 0;
+      } else {
+        revenue = orderTotal; // Estimated
+      }
+
+      const totalCost = costs.cogs + costs.shippingCost + costs.codFee + costs.platformFee;
+      const netProfit = revenue - totalCost;
+
+      // Determine finalization
+      const isFinalized = isReturned || isFailed || (isDelivered && (isPrepaid || isCodCollected));
+
+      return {
+        estimatedProfit: netProfit,
+        finalizedProfit: isFinalized ? netProfit : null,
+        isFinalized,
+      };
+    };
+
+    it("should have estimated = finalized for completed orders", () => {
+      const order = { total_amount: 100, status: "delivered", payment_method: "card" };
+      const costs = { cogs: 30, shippingCost: 15, codFee: 0, platformFee: 2.5 };
+      const result = calculateProfitTruth(order, costs, null);
+      
+      expect(result.estimatedProfit).toBe(52.5);
+      expect(result.finalizedProfit).toBe(52.5);
+      expect(result.isFinalized).toBe(true);
+    });
+
+    it("should have finalized = null for pending orders", () => {
+      const order = { total_amount: 100, status: "pending", payment_method: "cod" };
+      const costs = { cogs: 30, shippingCost: 15, codFee: 3, platformFee: 2.5 };
+      const result = calculateProfitTruth(order, costs, null);
+      
+      expect(result.estimatedProfit).toBe(49.5);
+      expect(result.finalizedProfit).toBe(null);
+      expect(result.isFinalized).toBe(false);
+    });
+
+    it("should have negative finalized profit for returned orders", () => {
+      const order = { total_amount: 100, status: "returned", payment_method: "cod" };
+      const costs = { cogs: 30, shippingCost: 30, codFee: 3, platformFee: 2.5 }; // Double shipping
+      const result = calculateProfitTruth(order, costs, null);
+      
+      expect(result.estimatedProfit).toBe(-65.5); // 0 revenue - 65.5 costs
+      expect(result.finalizedProfit).toBe(-65.5);
+      expect(result.isFinalized).toBe(true);
+    });
+  });
+
+  describe("3. Aggregation Logic", () => {
+    const aggregateByPeriod = (orders: any[], groupBy: "day" | "week" | "month") => {
+      const groups: Map<string, { estimated: number; finalized: number; count: number }> = new Map();
+
+      for (const order of orders) {
+        const date = new Date(order.created_at);
+        let period: string;
+        
+        if (groupBy === "day") {
+          period = date.toISOString().split("T")[0];
+        } else if (groupBy === "week") {
+          const weekStart = new Date(date);
+          weekStart.setDate(date.getDate() - date.getDay());
+          period = weekStart.toISOString().split("T")[0];
+        } else {
+          period = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        }
+
+        if (!groups.has(period)) {
+          groups.set(period, { estimated: 0, finalized: 0, count: 0 });
+        }
+
+        const group = groups.get(period)!;
+        group.estimated += order.estimatedProfit || 0;
+        group.finalized += order.finalizedProfit || 0;
+        group.count++;
+      }
+
+      return Array.from(groups.entries()).map(([period, data]) => ({
+        period,
+        ...data,
+      }));
+    };
+
+    it("should group by day correctly", () => {
+      const orders = [
+        { created_at: "2024-01-15T10:00:00Z", estimatedProfit: 50, finalizedProfit: 50 },
+        { created_at: "2024-01-15T14:00:00Z", estimatedProfit: 30, finalizedProfit: 30 },
+        { created_at: "2024-01-16T10:00:00Z", estimatedProfit: 40, finalizedProfit: null },
+      ];
+
+      const result = aggregateByPeriod(orders, "day");
+      expect(result.length).toBe(2);
+      
+      const day15 = result.find(r => r.period === "2024-01-15");
+      expect(day15?.estimated).toBe(80);
+      expect(day15?.finalized).toBe(80);
+      expect(day15?.count).toBe(2);
+    });
+
+    it("should group by month correctly", () => {
+      const orders = [
+        { created_at: "2024-01-15T10:00:00Z", estimatedProfit: 50, finalizedProfit: 50 },
+        { created_at: "2024-02-15T10:00:00Z", estimatedProfit: 30, finalizedProfit: 30 },
+      ];
+
+      const result = aggregateByPeriod(orders, "month");
+      expect(result.length).toBe(2);
+      
+      const jan = result.find(r => r.period === "2024-01");
+      expect(jan?.estimated).toBe(50);
+    });
+  });
+
+  describe("4. Finalization Rate", () => {
+    it("should calculate finalization rate correctly", () => {
+      const finalizedCount = 7;
+      const pendingCount = 3;
+      const total = finalizedCount + pendingCount;
+      const rate = total > 0 ? Math.round((finalizedCount / total) * 100) : 0;
+      expect(rate).toBe(70);
+    });
+
+    it("should handle 100% finalization", () => {
+      const finalizedCount = 10;
+      const pendingCount = 0;
+      const total = finalizedCount + pendingCount;
+      const rate = total > 0 ? Math.round((finalizedCount / total) * 100) : 0;
+      expect(rate).toBe(100);
+    });
+
+    it("should handle 0% finalization", () => {
+      const finalizedCount = 0;
+      const pendingCount = 10;
+      const total = finalizedCount + pendingCount;
+      const rate = total > 0 ? Math.round((finalizedCount / total) * 100) : 0;
+      expect(rate).toBe(0);
+    });
+
+    it("should handle empty orders", () => {
+      const finalizedCount = 0;
+      const pendingCount = 0;
+      const total = finalizedCount + pendingCount;
+      const rate = total > 0 ? Math.round((finalizedCount / total) * 100) : 0;
+      expect(rate).toBe(0);
+    });
+  });
+});

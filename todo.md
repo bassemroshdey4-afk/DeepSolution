@@ -556,4 +556,53 @@
 ### 7. Documentation & Testing ✅
 - [x] SECURITY_CHECKLIST.md
 - [x] 51 security tests (345 total)
+- [x] checkpoint (f1b59f7a)
+
+
+## Observability & Financial Truth
+### 1. Audit Log UI (Read-only)
+- [ ] API: getAuditLogs (wallet, orders, inventory, AI usage)
+- [ ] Tenant scoped + Super Admin full access
+- [ ] صفحة /audit-log
+
+### 2. Profit Truth Engine
+- [ ] Track estimated vs finalized profit
+- [ ] Finalize profit after COD collection
+- [ ] Aggregate by order / product / day / channel
+- [ ] API: getProfitTruth
+
+### 3. Shipping Intelligence (Verify Existing)
+- [ ] التحقق من carrierPerformance APIs
+- [ ] التحقق من scoring و recommendations
+
+### 4. Testing
+- [ ] اختبارات Vitest
 - [ ] checkpoint
+
+
+## Observability & Financial Truth Phase
+### 1. Audit Log UI (Read-Only)
+- [x] إنشاء صفحة /audit للمراجعة
+- [x] عرض wallet_transactions بشكل tenant-scoped
+- [x] عرض orders و order_pnl
+- [x] عرض stock_movements
+- [x] عرض ai_usage_logs
+- [x] Super Admin: عرض cross-tenant
+- [x] فلترة بالتاريخ والنوع
+
+### 2. Profit Truth Engine
+- [x] التحقق من estimated vs finalized profit
+- [x] التحقق من COD collection finalization
+- [x] التحقق من aggregations (order/product/day/channel)
+- [x] التحقق من variable cost allocation accuracy
+
+### 3. Shipping Intelligence Verification
+- [x] التحقق من carrier performance metrics (32 اختبار)
+- [x] التحقق من scoring system (speed, reliability, return rate)
+- [x] التحقق من strengths/weaknesses detection
+- [x] التحقق من recommendations (38 اختبار smart routing)
+
+### 4. Shipping Integration Add-on
+- [x] التحقق من CSV/Excel upload implementation (processSheetImport API)
+- [x] التحقق من usage metering (checkAndDeductUsage)
+- [x] التحقق من billing integration (41 اختبار)
