@@ -1,5 +1,10 @@
-import { DashboardLayout } from '@/components/DashboardLayout';
+/**
+ * Dashboard Layout
+ * 
+ * Pass-through layout - AppShell is used in individual pages
+ * for more control over page-specific headers and actions.
+ */
 
-export default function Layout({ children }: { children: React.ReactNode }) {
-  return <DashboardLayout>{children}</DashboardLayout>;
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }

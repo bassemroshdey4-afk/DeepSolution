@@ -108,7 +108,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <nav className="flex-1 overflow-y-auto py-4 px-3">
           <ul className="space-y-1">
             {mainNavItems.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+              const isActive = pathname === item.href || (pathname?.startsWith(item.href + '/') ?? false);
               return (
                 <li key={item.href}>
                   <Link

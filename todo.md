@@ -916,3 +916,73 @@
 - [x] Stats overview (4 cards)
 
 **NEXT.JS MIGRATION COMPLETE** ✅
+
+
+## Switch Default Preview to Next.js
+- [x] Update dev server to serve Next.js instead of React (proxy via http-proxy-middleware)
+- [x] Configure Next.js on port 3001 (proxied through port 3000)
+- [x] Update package.json scripts (concurrently for dev:nextjs + dev:server)
+
+## Branding Integration
+- [x] Sidebar header (icon + name, collapsible mode icon-only)
+- [x] Topbar brand area (user avatar with DS gradient)
+- [x] Auth pages (full logo) - /login page created
+- [x] Favicon/app icon (DS mark)
+
+## Global SaaS UI Polish
+- [x] Consistent page headers (PageHeader component)
+- [x] Clean spacing/density (density tokens in AppShell)
+- [x] Unified buttons/inputs (ds-btn-primary, ds-card classes)
+- [x] Skeleton loading + empty states (SkeletonPage, EmptyState presets)
+- [x] RTL perfect alignment (dir="rtl" in AppShell)
+- [x] Arabic copy (I18N_TONE_GUIDE compliant)
+
+## Screenshots Deliverable
+- [x] Dashboard shell screenshot (dashboard-shell.webp)
+- [x] Orders page screenshot (orders-page.webp)
+- [x] Sidebar collapsed screenshot (sidebar-collapsed.webp)
+- [x] Sidebar expanded screenshot (sidebar-expanded.webp)
+- [x] Login page screenshot (login-page.webp)
+
+
+## Logo Quality Enhancement & Brand Assets
+- [ ] Analyze current logo and extract brand elements
+- [ ] Create clean SVG logo (vector-style, scalable)
+- [ ] Remove background and create transparent assets
+- [ ] Create logo variants:
+  - [ ] Full logo (icon + text)
+  - [ ] Icon only (DS mark)
+  - [ ] Monochrome dark
+  - [ ] Monochrome light
+- [ ] Place assets in /design-system/brand/logo/
+- [ ] Create Logo component for Next.js
+- [ ] Document brand-safe usage rules
+- [ ] Update Sidebar, Topbar, Login page with new assets
+- [ ] Save checkpoint
+
+
+## Motion System (SaaS-grade)
+- [x] Create motion tokens (duration, easing CSS variables)
+- [x] Install framer-motion package
+- [x] Create reusable motion components:
+  - [x] MotionButton (hover/press feedback)
+  - [x] MotionCard (hover lift)
+  - [x] PageTransition (fade/slide)
+  - [x] MotionList (staggered children)
+  - [x] MotionModal (scale/fade)
+  - [x] MotionDropdown (slide/fade)
+- [x] Apply to Sidebar (open/close animation)
+- [x] Apply to Orders page (list animations)
+- [x] Respect prefers-reduced-motion
+- [x] Create MOTION_SYSTEM.md documentation
+- [ ] Save checkpoint
+
+
+## Deep Intelligence™ Rebrand
+- [x] Create DeepIntelligenceThinking component
+- [x] Implement thinking stages with Arabic copy
+- [x] Add subtle gradient motion animation
+- [x] Use skeleton UI with brand colors
+- [x] Update AI feature naming in UI to "Deep Intelligence™"
+- [x] Replace loading spinners with thinking experience
+- [ ] Fix build errors and save checkpoint

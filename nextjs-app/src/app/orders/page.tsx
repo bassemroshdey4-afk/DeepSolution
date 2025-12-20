@@ -1,5 +1,8 @@
 'use client';
 
+// Force dynamic rendering to prevent prerendering errors with useContext
+export const dynamic = 'force-dynamic';
+
 /**
  * Orders Page
  * 
@@ -128,13 +131,15 @@ function StatCard({
   value, 
   icon: Icon, 
   trend,
-  color = 'primary' 
+  color = 'primary',
+  index = 0
 }: { 
   title: string; 
   value: string | number; 
   icon: React.ElementType;
   trend?: string;
   color?: 'primary' | 'success' | 'warning' | 'error';
+  index?: number;
 }) {
   const colorClasses = {
     primary: 'bg-ds-blue-500/10 text-ds-blue-600',
@@ -144,9 +149,19 @@ function StatCard({
   };
 
   return (
-    <div className="ds-card-stat">
+    <div 
+      className={cn(
+        'ds-card-stat hover-lift',
+        // Stagger animation
+        'animate-fade-in-up',
+        index === 0 && 'stagger-1',
+        index === 1 && 'stagger-2',
+        index === 2 && 'stagger-3',
+        index === 3 && 'stagger-4'
+      )}
+    >
       <div className="flex items-center gap-3 mb-3">
-        <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', colorClasses[color])}>
+        <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center transition-transform duration-[var(--motion-duration-fast)]', colorClasses[color])}>
           <Icon className="h-5 w-5" />
         </div>
         <span className="text-sm text-muted-foreground">{title}</span>
@@ -233,18 +248,21 @@ export default function OrdersPage() {
           value={mockStats.total}
           icon={ShoppingCart}
           trend="هذا الشهر"
+          index={0}
         />
         <StatCard
           title="قيد الانتظار"
           value={mockStats.pending}
           icon={Clock}
           color="warning"
+          index={1}
         />
         <StatCard
           title="تم الشحن"
           value={mockStats.shipped}
           icon={Truck}
           color="primary"
+          index={2}
         />
         <StatCard
           title="الإيرادات"
@@ -252,6 +270,7 @@ export default function OrdersPage() {
           icon={CheckCircle}
           color="success"
           trend="+12% عن الشهر الماضي"
+          index={3}
         />
       </div>
 
@@ -326,9 +345,16 @@ export default function OrdersPage() {
                   <tr
                     key={order.id}
                     className={cn(
-                      'border-b border-border last:border-0 hover:bg-muted/30 transition-colors',
-                      index % 2 === 0 ? 'bg-background' : 'bg-muted/10'
+                      'border-b border-border last:border-0',
+                      // Motion: smooth hover transition
+                      'transition-colors duration-[var(--motion-duration-fast)]',
+                      'hover:bg-muted/30',
+                      index % 2 === 0 ? 'bg-background' : 'bg-muted/10',
+                      // Stagger animation for rows
+                      'animate-fade-in-up',
+                      `[animation-delay:${index * 30}ms]`
                     )}
+                    style={{ animationDelay: `${index * 30}ms` }}
                   >
                     <td className="px-4 py-3">
                       <span className="text-sm font-medium text-primary">{order.id}</span>
@@ -357,13 +383,13 @@ export default function OrdersPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         <button
-                          className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                          className="p-1.5 rounded-md transition-all duration-[var(--motion-duration-fast)] hover:bg-muted active:scale-95"
                           title="عرض التفاصيل"
                         >
                           <Eye className="h-4 w-4 text-muted-foreground" />
                         </button>
                         <button
-                          className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                          className="p-1.5 rounded-md transition-all duration-[var(--motion-duration-fast)] hover:bg-muted active:scale-95"
                           title="المزيد"
                         >
                           <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
@@ -382,10 +408,10 @@ export default function OrdersPage() {
               عرض {filteredOrders.length} من {mockOrders.length} طلب
             </p>
             <div className="flex items-center gap-2">
-              <button className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-50" disabled>
+              <button className="px-3 py-1.5 text-sm border border-border rounded-md transition-all duration-[var(--motion-duration-fast)] hover:bg-muted active:scale-95 disabled:opacity-50" disabled>
                 السابق
               </button>
-              <button className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-50" disabled>
+              <button className="px-3 py-1.5 text-sm border border-border rounded-md transition-all duration-[var(--motion-duration-fast)] hover:bg-muted active:scale-95 disabled:opacity-50" disabled>
                 التالي
               </button>
             </div>

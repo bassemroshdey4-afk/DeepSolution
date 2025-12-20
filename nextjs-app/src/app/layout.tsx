@@ -1,3 +1,6 @@
+// Force dynamic rendering for all pages
+export const dynamic = 'force-dynamic';
+
 import type { Metadata } from 'next';
 import './globals.css';
 import { Providers } from './providers';
@@ -5,6 +8,11 @@ import { Providers } from './providers';
 export const metadata: Metadata = {
   title: 'DeepSolution - منصة إدارة التجارة الإلكترونية',
   description: 'منظومة SaaS عالمية لإدارة وتشغيل التجارة الإلكترونية',
+  icons: {
+    icon: '/ds-logo.png',
+    shortcut: '/ds-logo.png',
+    apple: '/ds-logo.png',
+  },
 };
 
 export default function RootLayout({

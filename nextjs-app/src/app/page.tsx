@@ -1,5 +1,8 @@
 'use client';
 
+// Force dynamic rendering to prevent prerendering errors with useContext
+export const dynamic = 'force-dynamic';
+
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import {
