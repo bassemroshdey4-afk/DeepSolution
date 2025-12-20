@@ -840,3 +840,42 @@
 
 **STEP 1 COMPLETE** ✅
 - [ ] Screenshots/notes proving tokens work
+
+
+## Step 2: App Layout & Navigation Skeleton
+
+### 1. App Shell Structure
+- [x] Reusable layout component (AppShell.tsx)
+- [x] Sidebar (RTL/LTR support)
+- [x] Top navigation bar (Topbar.tsx)
+- [x] Page header component (PageHeader.tsx)
+- [x] Content container with max-width
+- [x] Responsive (desktop first)
+
+### 2. Sidebar Navigation
+- [x] Logical grouping (Operations / Marketing / Finance / Settings)
+- [x] Clear active state
+- [x] Subtle icons (lucide-react)
+- [x] Collapsible sidebar support
+
+### 3. Navigation UX
+- [x] Breadcrumb component
+- [x] Clear "where am I?" feeling
+- [x] No dead ends
+- [x] Empty routes handled gracefully
+
+### 4. Density Modes
+- [x] comfortable (default) structure
+- [x] dense structure
+- [x] Wired to layout spacing via LayoutContext
+
+### 5. Loading & Empty States
+- [x] Skeleton loaders (Skeleton.tsx - text, card, table, page, list)
+- [x] Empty state component (EmptyState.tsx with presets)
+- [x] Arabic copy following I18N_TONE_GUIDE.md
+
+### 6. Demo
+- [x] /ui-preview route
+- [x] Layout decisions documented
+
+**STEP 2 COMPLETE** ✅

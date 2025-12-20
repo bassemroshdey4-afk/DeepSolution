@@ -27,6 +27,7 @@ import Inventory from "./pages/Inventory";
 import Purchasing from "./pages/Purchasing";
 import AuditLog from "./pages/AuditLog";
 import DesignSystem from "./pages/DesignSystem";
+import UIPreview from "./pages/UIPreview";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
@@ -100,6 +101,7 @@ function Router() {
       <Route path="/purchasing">{() => <ProtectedRoute component={Purchasing} />}</Route>
       <Route path="/audit-log">{() => <ProtectedRoute component={AuditLog} />}</Route>
       <Route path="/design-system" component={DesignSystem} />
+      <Route path="/ui-preview" component={UIPreview} />
       <Route>
         <Redirect to="/" />
       </Route>
