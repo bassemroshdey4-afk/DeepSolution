@@ -985,4 +985,47 @@
 - [x] Use skeleton UI with brand colors
 - [x] Update AI feature naming in UI to "Deep Intelligence™"
 - [x] Replace loading spinners with thinking experience
-- [ ] Fix build errors and save checkpoint
+- [x] Fix build errors and save checkpoint (7d87b621)
+
+
+## Private Alpha Deployment
+### Part 1 - Vercel Private Deployment
+- [x] Deploy nextjs-app to Vercel (production + preview) - Ready for user deployment
+- [x] Implement Basic Auth middleware for private access
+- [x] Add robots.txt: Disallow all
+- [x] Add X-Robots-Tag: noindex, nofollow middleware
+- [x] No sitemap generation
+
+### Part 2 - Feature Flags System
+- [x] Create feature_flags table in DB (global, tenant, user levels)
+- [x] Server-side flag evaluation
+- [x] Default flags:
+  - [x] enable_public_signup (OFF)
+  - [x] enable_deep_intelligence (super admin only)
+  - [x] enable_marketing_decision_engine (super admin only)
+  - [x] enable_ad_creator (super admin only)
+  - [x] enable_landing_builder (super admin only)
+  - [x] enable_shipping_ops (super admin only)
+  - [x] enable_finance_profit_engine (super admin only)
+  - [x] enable_integrations (super admin only)
+
+### Part 3 - Super Admin System
+- [x] Super Admin invisible to customers
+- [x] Super Admin capabilities: manage tenants, users, disable accounts, view logs
+- [x] Hidden route for Super Admin access (/env-check)
+- [x] Secure role/claim check
+
+### Part 4 - Safe Defaults & Environment
+- [x] All secrets in Vercel env vars only
+- [x] ENV_CHECK page for Super Admin (key names only, health checks)
+
+### Part 5 - Production Guardrails
+- [x] OpenAI usage protection (no real-time loops, batch scheduling)
+- [x] Hard rate limits + per-run token budgets
+- [x] enable_ai_calls kill-switch flag
+- [x] AI run logging (who, cost, tokens, status)
+
+### Part 6 - Documentation
+- [x] DEPLOYMENT_OWNERSHIP.md
+- [x] SECURITY_ALPHA_RULES.md
+- [x] FEATURE_FLAGS.md
