@@ -1,0 +1,222 @@
+/**
+ * ============================================
+ * Deep Solution Design System - Color Tokens
+ * ============================================
+ * 
+ * Brand colors derived from the DS logo:
+ * - Primary Blue: #2563EB (top of gradient)
+ * - Teal Accent: #14B8A6 (bottom of gradient)
+ * - Navy Text: #1E3A5F (logo text)
+ * 
+ * Color format: OKLCH for better perceptual uniformity
+ * ============================================
+ */
+
+:root {
+  /* ========================================
+   * Brand Colors (from DS Logo)
+   * ======================================== */
+  
+  /* Primary Blue Scale (Main brand color) */
+  --ds-blue-50: oklch(0.97 0.02 250);
+  --ds-blue-100: oklch(0.93 0.04 250);
+  --ds-blue-200: oklch(0.86 0.08 250);
+  --ds-blue-300: oklch(0.76 0.12 250);
+  --ds-blue-400: oklch(0.65 0.16 250);
+  --ds-blue-500: oklch(0.55 0.20 250);   /* Base primary */
+  --ds-blue-600: oklch(0.48 0.18 250);
+  --ds-blue-700: oklch(0.42 0.16 250);
+  --ds-blue-800: oklch(0.35 0.14 250);
+  --ds-blue-900: oklch(0.28 0.10 250);
+  --ds-blue-950: oklch(0.20 0.08 250);
+  
+  /* Teal Accent Scale (Secondary brand color) */
+  --ds-teal-50: oklch(0.97 0.02 180);
+  --ds-teal-100: oklch(0.93 0.04 180);
+  --ds-teal-200: oklch(0.86 0.08 175);
+  --ds-teal-300: oklch(0.76 0.12 175);
+  --ds-teal-400: oklch(0.68 0.14 175);
+  --ds-teal-500: oklch(0.60 0.15 175);   /* Base accent */
+  --ds-teal-600: oklch(0.52 0.13 175);
+  --ds-teal-700: oklch(0.45 0.11 175);
+  --ds-teal-800: oklch(0.38 0.09 175);
+  --ds-teal-900: oklch(0.30 0.07 175);
+  --ds-teal-950: oklch(0.22 0.05 175);
+  
+  /* Navy Scale (Text & headings) */
+  --ds-navy-50: oklch(0.97 0.01 250);
+  --ds-navy-100: oklch(0.93 0.02 250);
+  --ds-navy-200: oklch(0.85 0.03 250);
+  --ds-navy-300: oklch(0.72 0.04 250);
+  --ds-navy-400: oklch(0.58 0.06 250);
+  --ds-navy-500: oklch(0.45 0.07 250);
+  --ds-navy-600: oklch(0.38 0.08 250);
+  --ds-navy-700: oklch(0.32 0.08 250);   /* Logo text color */
+  --ds-navy-800: oklch(0.26 0.07 250);
+  --ds-navy-900: oklch(0.20 0.05 250);
+  --ds-navy-950: oklch(0.14 0.04 250);
+  
+  /* ========================================
+   * Neutral Scale (Gray palette)
+   * ======================================== */
+  --ds-gray-50: oklch(0.985 0 0);
+  --ds-gray-100: oklch(0.965 0.002 250);
+  --ds-gray-200: oklch(0.925 0.004 250);
+  --ds-gray-300: oklch(0.87 0.006 250);
+  --ds-gray-400: oklch(0.70 0.008 250);
+  --ds-gray-500: oklch(0.55 0.010 250);
+  --ds-gray-600: oklch(0.45 0.010 250);
+  --ds-gray-700: oklch(0.37 0.008 250);
+  --ds-gray-800: oklch(0.27 0.006 250);
+  --ds-gray-900: oklch(0.20 0.004 250);
+  --ds-gray-950: oklch(0.13 0.003 250);
+  
+  /* ========================================
+   * Functional Status Colors (Muted & Professional)
+   * ======================================== */
+  
+  /* Success - Muted green */
+  --ds-success-50: oklch(0.96 0.02 145);
+  --ds-success-100: oklch(0.92 0.04 145);
+  --ds-success-200: oklch(0.85 0.08 145);
+  --ds-success-300: oklch(0.75 0.10 145);
+  --ds-success-400: oklch(0.65 0.12 145);
+  --ds-success-500: oklch(0.55 0.12 145);   /* Base success */
+  --ds-success-600: oklch(0.48 0.10 145);
+  --ds-success-700: oklch(0.40 0.08 145);
+  --ds-success-800: oklch(0.32 0.06 145);
+  --ds-success-900: oklch(0.25 0.04 145);
+  
+  /* Warning - Muted amber */
+  --ds-warning-50: oklch(0.97 0.02 85);
+  --ds-warning-100: oklch(0.94 0.04 85);
+  --ds-warning-200: oklch(0.88 0.08 85);
+  --ds-warning-300: oklch(0.80 0.12 80);
+  --ds-warning-400: oklch(0.72 0.14 75);
+  --ds-warning-500: oklch(0.65 0.14 70);    /* Base warning */
+  --ds-warning-600: oklch(0.55 0.12 65);
+  --ds-warning-700: oklch(0.45 0.10 60);
+  --ds-warning-800: oklch(0.38 0.08 55);
+  --ds-warning-900: oklch(0.30 0.06 50);
+  
+  /* Error - Muted red */
+  --ds-error-50: oklch(0.97 0.01 25);
+  --ds-error-100: oklch(0.93 0.03 25);
+  --ds-error-200: oklch(0.87 0.06 25);
+  --ds-error-300: oklch(0.78 0.10 25);
+  --ds-error-400: oklch(0.68 0.14 25);
+  --ds-error-500: oklch(0.58 0.16 25);      /* Base error */
+  --ds-error-600: oklch(0.50 0.14 25);
+  --ds-error-700: oklch(0.42 0.12 25);
+  --ds-error-800: oklch(0.35 0.10 25);
+  --ds-error-900: oklch(0.28 0.08 25);
+  
+  /* Info - Muted blue (uses brand blue) */
+  --ds-info-50: var(--ds-blue-50);
+  --ds-info-100: var(--ds-blue-100);
+  --ds-info-200: var(--ds-blue-200);
+  --ds-info-300: var(--ds-blue-300);
+  --ds-info-400: var(--ds-blue-400);
+  --ds-info-500: var(--ds-blue-500);
+  --ds-info-600: var(--ds-blue-600);
+  --ds-info-700: var(--ds-blue-700);
+  --ds-info-800: var(--ds-blue-800);
+  --ds-info-900: var(--ds-blue-900);
+  
+  /* ========================================
+   * Brand Gradient
+   * ======================================== */
+  --ds-gradient-brand: linear-gradient(135deg, var(--ds-blue-500) 0%, var(--ds-teal-500) 100%);
+  --ds-gradient-brand-hover: linear-gradient(135deg, var(--ds-blue-600) 0%, var(--ds-teal-600) 100%);
+  --ds-gradient-brand-subtle: linear-gradient(135deg, var(--ds-blue-100) 0%, var(--ds-teal-100) 100%);
+  
+  /* ========================================
+   * Semantic Tokens - Light Mode
+   * ======================================== */
+  
+  /* Backgrounds */
+  --ds-bg-primary: oklch(1 0 0);
+  --ds-bg-secondary: var(--ds-gray-50);
+  --ds-bg-tertiary: var(--ds-gray-100);
+  --ds-bg-elevated: oklch(1 0 0);
+  --ds-bg-overlay: oklch(0 0 0 / 0.5);
+  
+  /* Foregrounds */
+  --ds-fg-primary: var(--ds-navy-800);
+  --ds-fg-secondary: var(--ds-gray-600);
+  --ds-fg-tertiary: var(--ds-gray-500);
+  --ds-fg-muted: var(--ds-gray-400);
+  --ds-fg-inverse: oklch(1 0 0);
+  
+  /* Borders */
+  --ds-border-default: var(--ds-gray-200);
+  --ds-border-subtle: var(--ds-gray-100);
+  --ds-border-strong: var(--ds-gray-300);
+  --ds-border-focus: var(--ds-blue-500);
+  
+  /* Interactive */
+  --ds-interactive-primary: var(--ds-blue-500);
+  --ds-interactive-primary-hover: var(--ds-blue-600);
+  --ds-interactive-primary-active: var(--ds-blue-700);
+  --ds-interactive-secondary: var(--ds-teal-500);
+  --ds-interactive-secondary-hover: var(--ds-teal-600);
+  
+  /* Shadows */
+  --ds-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.05);
+  --ds-shadow-md: 0 4px 6px -1px oklch(0 0 0 / 0.07), 0 2px 4px -2px oklch(0 0 0 / 0.05);
+  --ds-shadow-lg: 0 10px 15px -3px oklch(0 0 0 / 0.08), 0 4px 6px -4px oklch(0 0 0 / 0.05);
+  --ds-shadow-xl: 0 20px 25px -5px oklch(0 0 0 / 0.08), 0 8px 10px -6px oklch(0 0 0 / 0.05);
+}
+
+/* ========================================
+ * Dark Mode Tokens
+ * ======================================== */
+.dark {
+  /* Backgrounds */
+  --ds-bg-primary: var(--ds-gray-950);
+  --ds-bg-secondary: var(--ds-gray-900);
+  --ds-bg-tertiary: var(--ds-gray-800);
+  --ds-bg-elevated: var(--ds-gray-900);
+  --ds-bg-overlay: oklch(0 0 0 / 0.7);
+  
+  /* Foregrounds */
+  --ds-fg-primary: var(--ds-gray-50);
+  --ds-fg-secondary: var(--ds-gray-300);
+  --ds-fg-tertiary: var(--ds-gray-400);
+  --ds-fg-muted: var(--ds-gray-500);
+  --ds-fg-inverse: var(--ds-gray-950);
+  
+  /* Borders */
+  --ds-border-default: var(--ds-gray-800);
+  --ds-border-subtle: var(--ds-gray-900);
+  --ds-border-strong: var(--ds-gray-700);
+  --ds-border-focus: var(--ds-blue-400);
+  
+  /* Interactive */
+  --ds-interactive-primary: var(--ds-blue-400);
+  --ds-interactive-primary-hover: var(--ds-blue-300);
+  --ds-interactive-primary-active: var(--ds-blue-500);
+  --ds-interactive-secondary: var(--ds-teal-400);
+  --ds-interactive-secondary-hover: var(--ds-teal-300);
+  
+  /* Shadows (more subtle in dark mode) */
+  --ds-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
+  --ds-shadow-md: 0 4px 6px -1px oklch(0 0 0 / 0.4), 0 2px 4px -2px oklch(0 0 0 / 0.3);
+  --ds-shadow-lg: 0 10px 15px -3px oklch(0 0 0 / 0.5), 0 4px 6px -4px oklch(0 0 0 / 0.4);
+  --ds-shadow-xl: 0 20px 25px -5px oklch(0 0 0 / 0.5), 0 8px 10px -6px oklch(0 0 0 / 0.4);
+}
+
+/* ========================================
+ * AI Action Colors (Special)
+ * ======================================== */
+:root {
+  --ds-ai-gradient: linear-gradient(135deg, var(--ds-blue-400) 0%, var(--ds-teal-400) 50%, var(--ds-blue-500) 100%);
+  --ds-ai-glow: 0 0 20px oklch(0.6 0.15 200 / 0.3);
+  --ds-ai-border: var(--ds-teal-400);
+}
+
+.dark {
+  --ds-ai-gradient: linear-gradient(135deg, var(--ds-blue-300) 0%, var(--ds-teal-300) 50%, var(--ds-blue-400) 100%);
+  --ds-ai-glow: 0 0 25px oklch(0.6 0.15 200 / 0.4);
+  --ds-ai-border: var(--ds-teal-300);
+}

@@ -802,3 +802,41 @@
 **SHIPPING OPS AUTOMATION COMPLETE** ✅
 - 39 tests for Shipping Automation
 - 4 n8n workflows (S1-S4)
+
+## Step 1: Design System Foundation
+
+### 1. Brand Colors
+- [x] Create brand gradient (blue → teal) from DS logo
+- [x] Define primary / secondary / neutral palettes as CSS variables
+- [x] Add functional status colors (success/warn/error/info) - muted, professional
+- [x] Light mode tokens
+- [x] Dark mode tokens (prepared)
+- [x] Tailwind config mapping
+
+### 2. Typography
+- [x] Choose Arabic-first font: IBM Plex Sans Arabic
+- [x] Define typographic scale (page title, section title, body, small, table)
+- [x] Ensure RTL layout compatibility
+- [x] styles/typography.css
+- [x] Tailwind theme.extend.fontFamily
+
+### 3. i18n / Translation Quality
+- [x] I18N_TONE_GUIDE.md with Arabic tone rules
+- [x] Examples: bad literal vs good natural Arabic
+- [x] UI microcopy style guide
+- [x] ar/en dictionaries structure
+- [x] RTL/LTR switching support
+
+### 4. UI Command Library
+- [x] DESIGN_COMMANDS.md
+- [x] Layout density options (Dense/Comfortable/Spacious)
+- [x] Button hierarchy (Primary/Secondary/Danger/AI Action/Ghost)
+- [x] Table states (Default/Hover/Selected/Warning/Error/Disabled)
+
+### 5. Sample Components
+- [x] Apply tokens to sample button (Primary/Secondary/Danger/AI)
+- [x] Apply tokens to sample card (Default/Stat/Interactive)
+- [x] Design System preview page at /design-system
+
+**STEP 1 COMPLETE** ✅
+- [ ] Screenshots/notes proving tokens work

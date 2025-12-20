@@ -1,13 +1,30 @@
+/**
+ * ============================================
+ * Deep Solution - Main Stylesheet
+ * ============================================
+ * Design System: Enterprise-grade Arabic-first UI
+ * ============================================
+ */
+
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/tokens.css";
+@import "./styles/typography.css";
 
 @custom-variant dark (&:is(.dark *));
 
+/* ========================================
+ * Tailwind Theme Integration
+ * Map DS tokens to Tailwind's theme system
+ * ======================================== */
 @theme inline {
+  /* Radius */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  
+  /* Core semantic colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -27,11 +44,15 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  
+  /* Chart colors */
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  
+  /* Sidebar colors */
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -40,90 +61,171 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  
+  /* DS Brand colors for Tailwind */
+  --color-ds-blue-50: var(--ds-blue-50);
+  --color-ds-blue-100: var(--ds-blue-100);
+  --color-ds-blue-200: var(--ds-blue-200);
+  --color-ds-blue-300: var(--ds-blue-300);
+  --color-ds-blue-400: var(--ds-blue-400);
+  --color-ds-blue-500: var(--ds-blue-500);
+  --color-ds-blue-600: var(--ds-blue-600);
+  --color-ds-blue-700: var(--ds-blue-700);
+  --color-ds-blue-800: var(--ds-blue-800);
+  --color-ds-blue-900: var(--ds-blue-900);
+  
+  --color-ds-teal-50: var(--ds-teal-50);
+  --color-ds-teal-100: var(--ds-teal-100);
+  --color-ds-teal-200: var(--ds-teal-200);
+  --color-ds-teal-300: var(--ds-teal-300);
+  --color-ds-teal-400: var(--ds-teal-400);
+  --color-ds-teal-500: var(--ds-teal-500);
+  --color-ds-teal-600: var(--ds-teal-600);
+  --color-ds-teal-700: var(--ds-teal-700);
+  --color-ds-teal-800: var(--ds-teal-800);
+  --color-ds-teal-900: var(--ds-teal-900);
+  
+  /* Status colors */
+  --color-ds-success: var(--ds-success-500);
+  --color-ds-warning: var(--ds-warning-500);
+  --color-ds-error: var(--ds-error-500);
+  --color-ds-info: var(--ds-info-500);
 }
 
+/* ========================================
+ * Light Mode (Default)
+ * ======================================== */
 :root {
-  --primary: var(--color-blue-700);
-  --primary-foreground: var(--color-blue-50);
-  --sidebar-primary: var(--color-blue-600);
-  --sidebar-primary-foreground: var(--color-blue-50);
-  --chart-1: var(--color-blue-300);
-  --chart-2: var(--color-blue-500);
-  --chart-3: var(--color-blue-600);
-  --chart-4: var(--color-blue-700);
-  --chart-5: var(--color-blue-800);
-  --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.235 0.015 65);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.235 0.015 65);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.235 0.015 65);
-  --secondary: oklch(0.98 0.001 286.375);
-  --secondary-foreground: oklch(0.4 0.015 65);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.141 0.005 285.823);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.623 0.214 259.815);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.235 0.015 65);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.623 0.214 259.815);
+  /* Primary - DS Blue */
+  --primary: var(--ds-blue-500);
+  --primary-foreground: oklch(1 0 0);
+  
+  /* Sidebar uses brand colors */
+  --sidebar-primary: var(--ds-blue-500);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  
+  /* Chart colors - brand palette */
+  --chart-1: var(--ds-blue-300);
+  --chart-2: var(--ds-teal-400);
+  --chart-3: var(--ds-blue-500);
+  --chart-4: var(--ds-teal-600);
+  --chart-5: var(--ds-blue-700);
+  
+  /* Base radius */
+  --radius: 0.5rem;
+  
+  /* Backgrounds */
+  --background: var(--ds-bg-primary);
+  --foreground: var(--ds-fg-primary);
+  --card: var(--ds-bg-primary);
+  --card-foreground: var(--ds-fg-primary);
+  --popover: var(--ds-bg-primary);
+  --popover-foreground: var(--ds-fg-primary);
+  
+  /* Secondary & Muted */
+  --secondary: var(--ds-gray-100);
+  --secondary-foreground: var(--ds-gray-700);
+  --muted: var(--ds-gray-100);
+  --muted-foreground: var(--ds-gray-500);
+  
+  /* Accent - Teal */
+  --accent: var(--ds-teal-100);
+  --accent-foreground: var(--ds-teal-700);
+  
+  /* Destructive */
+  --destructive: var(--ds-error-500);
+  --destructive-foreground: oklch(1 0 0);
+  
+  /* Borders & Input */
+  --border: var(--ds-border-default);
+  --input: var(--ds-border-default);
+  --ring: var(--ds-blue-500);
+  
+  /* Sidebar */
+  --sidebar: var(--ds-bg-primary);
+  --sidebar-foreground: var(--ds-fg-primary);
+  --sidebar-accent: var(--ds-gray-100);
+  --sidebar-accent-foreground: var(--ds-fg-primary);
+  --sidebar-border: var(--ds-border-default);
+  --sidebar-ring: var(--ds-blue-500);
 }
 
+/* ========================================
+ * Dark Mode
+ * ======================================== */
 .dark {
-  --primary: var(--color-blue-700);
-  --primary-foreground: var(--color-blue-50);
-  --sidebar-primary: var(--color-blue-500);
-  --sidebar-primary-foreground: var(--color-blue-50);
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.85 0.005 65);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.85 0.005 65);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.85 0.005 65);
-  --secondary: oklch(0.24 0.006 286.033);
-  --secondary-foreground: oklch(0.7 0.005 65);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground:  oklch(0.92 0.005 65);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.488 0.243 264.376);
-  --chart-1: var(--color-blue-300);
-  --chart-2: var(--color-blue-500);
-  --chart-3: var(--color-blue-600);
-  --chart-4: var(--color-blue-700);
-  --chart-5: var(--color-blue-800);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.85 0.005 65);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground:  oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.488 0.243 264.376);
+  /* Primary */
+  --primary: var(--ds-blue-400);
+  --primary-foreground: var(--ds-gray-950);
+  
+  /* Sidebar */
+  --sidebar-primary: var(--ds-blue-400);
+  --sidebar-primary-foreground: var(--ds-gray-950);
+  
+  /* Backgrounds */
+  --background: var(--ds-bg-primary);
+  --foreground: var(--ds-fg-primary);
+  --card: var(--ds-gray-900);
+  --card-foreground: var(--ds-fg-primary);
+  --popover: var(--ds-gray-900);
+  --popover-foreground: var(--ds-fg-primary);
+  
+  /* Secondary & Muted */
+  --secondary: var(--ds-gray-800);
+  --secondary-foreground: var(--ds-gray-200);
+  --muted: var(--ds-gray-800);
+  --muted-foreground: var(--ds-gray-400);
+  
+  /* Accent */
+  --accent: var(--ds-teal-900);
+  --accent-foreground: var(--ds-teal-200);
+  
+  /* Destructive */
+  --destructive: var(--ds-error-400);
+  --destructive-foreground: oklch(1 0 0);
+  
+  /* Borders & Input */
+  --border: var(--ds-border-default);
+  --input: var(--ds-border-default);
+  --ring: var(--ds-blue-400);
+  
+  /* Sidebar */
+  --sidebar: var(--ds-gray-900);
+  --sidebar-foreground: var(--ds-fg-primary);
+  --sidebar-accent: var(--ds-gray-800);
+  --sidebar-accent-foreground: var(--ds-fg-primary);
+  --sidebar-border: var(--ds-border-default);
+  --sidebar-ring: var(--ds-blue-400);
+  
+  /* Chart colors - adjusted for dark */
+  --chart-1: var(--ds-blue-400);
+  --chart-2: var(--ds-teal-400);
+  --chart-3: var(--ds-blue-300);
+  --chart-4: var(--ds-teal-300);
+  --chart-5: var(--ds-blue-500);
 }
 
+/* ========================================
+ * Base Layer
+ * ======================================== */
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  
   html {
     direction: rtl;
+    font-family: var(--ds-font-primary);
   }
+  
   body {
     @apply bg-background text-foreground;
-    font-family: 'Cairo', 'Tajawal', system-ui, -apple-system, sans-serif;
+    font-family: var(--ds-font-primary);
+    font-size: var(--ds-text-body);
+    line-height: var(--ds-leading-body);
   }
+  
+  /* Interactive elements cursor */
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
   [type="button"]:not(:disabled),
@@ -135,27 +237,58 @@
   input[type="radio"]:not(:disabled) {
     @apply cursor-pointer;
   }
+  
+  /* Focus styles */
+  :focus-visible {
+    outline: 2px solid var(--ds-border-focus);
+    outline-offset: 2px;
+  }
+  
+  /* Headings */
+  h1 {
+    font-size: var(--ds-text-page-title);
+    font-weight: var(--ds-font-semibold);
+    line-height: var(--ds-leading-page-title);
+    letter-spacing: var(--ds-tracking-page-title);
+  }
+  
+  h2 {
+    font-size: var(--ds-text-section-title);
+    font-weight: var(--ds-font-semibold);
+    line-height: var(--ds-leading-section-title);
+    letter-spacing: var(--ds-tracking-section-title);
+  }
+  
+  h3 {
+    font-size: var(--ds-text-subsection);
+    font-weight: var(--ds-font-medium);
+    line-height: var(--ds-leading-subsection);
+    letter-spacing: var(--ds-tracking-subsection);
+  }
+  
+  h4, h5, h6 {
+    font-size: var(--ds-text-body-lg);
+    font-weight: var(--ds-font-medium);
+    line-height: var(--ds-leading-body-lg);
+  }
+  
+  /* Small text */
+  small {
+    font-size: var(--ds-text-small);
+    line-height: var(--ds-leading-small);
+  }
 }
 
+/* ========================================
+ * Components Layer
+ * ======================================== */
 @layer components {
-  /**
-   * Custom container utility that centers content and adds responsive padding.
-   *
-   * This overrides Tailwind's default container behavior to:
-   * - Auto-center content (mx-auto)
-   * - Add responsive horizontal padding
-   * - Set max-width for large screens
-   *
-   * Usage: <div className="container">...</div>
-   *
-   * For custom widths, use max-w-* utilities directly:
-   * <div className="max-w-6xl mx-auto px-4">...</div>
-   */
+  /* Container */
   .container {
     width: 100%;
     margin-left: auto;
     margin-right: auto;
-    padding-left: 1rem; /* 16px - mobile padding */
+    padding-left: 1rem;
     padding-right: 1rem;
   }
 
@@ -166,16 +299,237 @@
 
   @media (min-width: 640px) {
     .container {
-      padding-left: 1.5rem; /* 24px - tablet padding */
+      padding-left: 1.5rem;
       padding-right: 1.5rem;
     }
   }
 
   @media (min-width: 1024px) {
     .container {
-      padding-left: 2rem; /* 32px - desktop padding */
+      padding-left: 2rem;
       padding-right: 2rem;
-      max-width: 1280px; /* Standard content width */
+      max-width: 1280px;
     }
+  }
+  
+  /* ========================================
+   * DS Button Variants
+   * ======================================== */
+  .ds-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: var(--ds-font-primary);
+    font-size: var(--ds-text-body-sm);
+    font-weight: var(--ds-font-medium);
+    line-height: 1;
+    padding: 0.625rem 1rem;
+    border-radius: var(--radius);
+    transition: all 0.15s ease;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  
+  .ds-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  /* Primary Button */
+  .ds-btn-primary {
+    background: var(--ds-interactive-primary);
+    color: oklch(1 0 0);
+    border-color: var(--ds-interactive-primary);
+  }
+  
+  .ds-btn-primary:hover:not(:disabled) {
+    background: var(--ds-interactive-primary-hover);
+    border-color: var(--ds-interactive-primary-hover);
+  }
+  
+  .ds-btn-primary:active:not(:disabled) {
+    background: var(--ds-interactive-primary-active);
+  }
+  
+  /* Secondary Button */
+  .ds-btn-secondary {
+    background: transparent;
+    color: var(--ds-fg-primary);
+    border-color: var(--ds-border-default);
+  }
+  
+  .ds-btn-secondary:hover:not(:disabled) {
+    background: var(--ds-gray-100);
+    border-color: var(--ds-border-strong);
+  }
+  
+  .dark .ds-btn-secondary:hover:not(:disabled) {
+    background: var(--ds-gray-800);
+  }
+  
+  /* Danger Button */
+  .ds-btn-danger {
+    background: var(--ds-error-500);
+    color: oklch(1 0 0);
+    border-color: var(--ds-error-500);
+  }
+  
+  .ds-btn-danger:hover:not(:disabled) {
+    background: var(--ds-error-600);
+    border-color: var(--ds-error-600);
+  }
+  
+  /* AI Action Button */
+  .ds-btn-ai {
+    background: var(--ds-ai-gradient);
+    color: oklch(1 0 0);
+    border-color: transparent;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .ds-btn-ai:hover:not(:disabled) {
+    box-shadow: var(--ds-ai-glow);
+  }
+  
+  .ds-btn-ai::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.1), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s ease;
+  }
+  
+  .ds-btn-ai:hover::before {
+    transform: translateX(100%);
+  }
+  
+  /* ========================================
+   * DS Card
+   * ======================================== */
+  .ds-card {
+    background: var(--card);
+    border: 1px solid var(--ds-border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--ds-shadow-sm);
+    padding: 1.25rem;
+  }
+  
+  .ds-card-header {
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--ds-border-subtle);
+    margin-bottom: 1rem;
+  }
+  
+  .ds-card-title {
+    font-size: var(--ds-text-subsection);
+    font-weight: var(--ds-font-semibold);
+    color: var(--ds-fg-primary);
+  }
+  
+  .ds-card-description {
+    font-size: var(--ds-text-body-sm);
+    color: var(--ds-fg-secondary);
+    margin-top: 0.25rem;
+  }
+  
+  /* ========================================
+   * DS Badge
+   * ======================================== */
+  .ds-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: var(--ds-text-tiny);
+    font-weight: var(--ds-font-medium);
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+  }
+  
+  .ds-badge-success {
+    background: var(--ds-success-100);
+    color: var(--ds-success-700);
+  }
+  
+  .ds-badge-warning {
+    background: var(--ds-warning-100);
+    color: var(--ds-warning-700);
+  }
+  
+  .ds-badge-error {
+    background: var(--ds-error-100);
+    color: var(--ds-error-700);
+  }
+  
+  .ds-badge-info {
+    background: var(--ds-info-100);
+    color: var(--ds-info-700);
+  }
+  
+  .ds-badge-neutral {
+    background: var(--ds-gray-100);
+    color: var(--ds-gray-700);
+  }
+  
+  .dark .ds-badge-success {
+    background: var(--ds-success-900);
+    color: var(--ds-success-300);
+  }
+  
+  .dark .ds-badge-warning {
+    background: var(--ds-warning-900);
+    color: var(--ds-warning-300);
+  }
+  
+  .dark .ds-badge-error {
+    background: var(--ds-error-900);
+    color: var(--ds-error-300);
+  }
+  
+  .dark .ds-badge-info {
+    background: var(--ds-info-900);
+    color: var(--ds-info-300);
+  }
+  
+  .dark .ds-badge-neutral {
+    background: var(--ds-gray-800);
+    color: var(--ds-gray-300);
+  }
+  
+  /* ========================================
+   * Brand Gradient Text
+   * ======================================== */
+  .ds-gradient-text {
+    background: var(--ds-gradient-brand);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+
+/* ========================================
+ * Utilities Layer
+ * ======================================== */
+@layer utilities {
+  /* Gradient backgrounds */
+  .bg-ds-gradient {
+    background: var(--ds-gradient-brand);
+  }
+  
+  .bg-ds-gradient-subtle {
+    background: var(--ds-gradient-brand-subtle);
+  }
+  
+  /* AI glow effect */
+  .shadow-ai {
+    box-shadow: var(--ds-ai-glow);
+  }
+  
+  /* Tabular numbers for data */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
   }
 }
