@@ -1,53 +1,70 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap');
+/**
+ * ============================================
+ * Deep Solution - Next.js Global Styles
+ * ============================================
+ * 
+ * Design System integrated from:
+ * - tokens.css (colors)
+ * - typography.css (fonts)
+ * ============================================
+ */
+
+/* Import Design System */
+@import '../styles/tokens.css';
+@import '../styles/typography.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ========================================
+ * Base Layer - shadcn/ui compatibility
+ * ======================================== */
 @layer base {
   :root {
+    /* Map DS tokens to shadcn variables */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 222.2 47% 11.2%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222.2 47% 11.2%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 142.1 76.2% 36.3%;
-    --primary-foreground: 355.7 100% 97.3%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --popover-foreground: 222.2 47% 11.2%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 174.7 83.9% 31.6%;
+    --secondary-foreground: 210 40% 98%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 72.2% 50.6%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 142.1 76.2% 36.3%;
+    --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 222.2 47% 6%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 222.2 47% 8%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 222.2 47% 8%;
     --popover-foreground: 210 40% 98%;
-    --primary: 142.1 70.6% 45.3%;
-    --primary-foreground: 144.9 80.4% 10%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47% 6%;
+    --secondary: 174.7 72% 45%;
+    --secondary-foreground: 222.2 47% 6%;
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
     --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 62.8% 50.6%;
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 142.1 76.2% 36.3%;
+    --ring: 217.2 91.2% 59.8%;
   }
 }
 
@@ -55,13 +72,17 @@
   * {
     @apply border-border;
   }
+  
   body {
     @apply bg-background text-foreground;
+    font-family: var(--ds-font-primary);
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
-/* RTL Support */
+/* ========================================
+ * RTL Support
+ * ======================================== */
 [dir="rtl"] {
   text-align: right;
 }
@@ -70,13 +91,186 @@
   --tw-space-x-reverse: 1;
 }
 
+[dir="rtl"] .ml-auto {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+[dir="rtl"] .mr-auto {
+  margin-right: 0;
+  margin-left: auto;
+}
+
 /* Sidebar RTL adjustments */
 [dir="rtl"] .sidebar {
   border-left: 1px solid hsl(var(--border));
   border-right: none;
 }
 
-/* Custom scrollbar */
+[dir="ltr"] .sidebar {
+  border-right: 1px solid hsl(var(--border));
+  border-left: none;
+}
+
+/* ========================================
+ * Component Classes
+ * ======================================== */
+@layer components {
+  /* Cards */
+  .ds-card {
+    @apply bg-card text-card-foreground rounded-lg border border-border p-6;
+    box-shadow: var(--ds-shadow-sm);
+  }
+  
+  .ds-card-stat {
+    @apply bg-card text-card-foreground rounded-lg border border-border p-5;
+    box-shadow: var(--ds-shadow-sm);
+  }
+  
+  .ds-card-interactive {
+    @apply bg-card text-card-foreground rounded-lg border border-border p-6 cursor-pointer;
+    box-shadow: var(--ds-shadow-sm);
+    transition: all 0.2s ease;
+  }
+  
+  .ds-card-interactive:hover {
+    box-shadow: var(--ds-shadow-md);
+    border-color: var(--ds-border-strong);
+  }
+  
+  /* Buttons */
+  .ds-btn-primary {
+    background: var(--ds-gradient-brand);
+    color: white;
+    transition: all 0.2s ease;
+  }
+  
+  .ds-btn-primary:hover {
+    background: var(--ds-gradient-brand-hover);
+    box-shadow: var(--ds-shadow-md);
+  }
+  
+  .ds-btn-ai {
+    background: var(--ds-ai-gradient);
+    color: white;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .ds-btn-ai::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 2s infinite;
+  }
+  
+  @keyframes shimmer {
+    100% { transform: translateX(100%); }
+  }
+  
+  /* Stat Value */
+  .ds-stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--ds-fg-primary);
+  }
+  
+  /* Gradients */
+  .ds-gradient {
+    background: var(--ds-gradient-brand);
+  }
+  
+  .ds-gradient-subtle {
+    background: var(--ds-gradient-brand-subtle);
+  }
+  
+  /* Status badges */
+  .ds-badge-success {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    background-color: var(--ds-success-100);
+    color: var(--ds-success-700);
+  }
+  
+  .ds-badge-warning {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    background-color: var(--ds-warning-100);
+    color: var(--ds-warning-700);
+  }
+  
+  .ds-badge-error {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    background-color: var(--ds-error-100);
+    color: var(--ds-error-700);
+  }
+  
+  .ds-badge-info {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    background-color: var(--ds-info-100);
+    color: var(--ds-info-700);
+  }
+  
+  .ds-badge-neutral {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    background-color: var(--ds-gray-100);
+    color: var(--ds-gray-700);
+  }
+}
+
+/* ========================================
+ * Utility Classes
+ * ======================================== */
+@layer utilities {
+  /* Brand colors */
+  .bg-ds-blue-500 { background-color: var(--ds-blue-500); }
+  .bg-ds-blue-600 { background-color: var(--ds-blue-600); }
+  .bg-ds-teal-500 { background-color: var(--ds-teal-500); }
+  .bg-ds-teal-600 { background-color: var(--ds-teal-600); }
+  .bg-ds-gradient { background: var(--ds-gradient-brand); }
+  .bg-ds-gradient-subtle { background: var(--ds-gradient-brand-subtle); }
+  
+  .text-ds-blue-500 { color: var(--ds-blue-500); }
+  .text-ds-blue-600 { color: var(--ds-blue-600); }
+  .text-ds-teal-500 { color: var(--ds-teal-500); }
+  .text-ds-teal-600 { color: var(--ds-teal-600); }
+  
+  /* Status colors */
+  .bg-success-50 { background-color: var(--ds-success-50); }
+  .bg-success-100 { background-color: var(--ds-success-100); }
+  .bg-success-500 { background-color: var(--ds-success-500); }
+  .text-success-600 { color: var(--ds-success-600); }
+  .text-success-700 { color: var(--ds-success-700); }
+  
+  .bg-warning-50 { background-color: var(--ds-warning-50); }
+  .bg-warning-100 { background-color: var(--ds-warning-100); }
+  .bg-warning-500 { background-color: var(--ds-warning-500); }
+  .text-warning-600 { color: var(--ds-warning-600); }
+  .text-warning-700 { color: var(--ds-warning-700); }
+  
+  .bg-error-50 { background-color: var(--ds-error-50); }
+  .bg-error-100 { background-color: var(--ds-error-100); }
+  .bg-error-500 { background-color: var(--ds-error-500); }
+  .text-error-600 { color: var(--ds-error-600); }
+  .text-error-700 { color: var(--ds-error-700); }
+  
+  .bg-info-50 { background-color: var(--ds-info-50); }
+  .bg-info-100 { background-color: var(--ds-info-100); }
+  .bg-info-500 { background-color: var(--ds-info-500); }
+  .text-info-600 { color: var(--ds-info-600); }
+  .text-info-700 { color: var(--ds-info-700); }
+  
+  /* Shadows */
+  .shadow-ds-sm { box-shadow: var(--ds-shadow-sm); }
+  .shadow-ds-md { box-shadow: var(--ds-shadow-md); }
+  .shadow-ds-lg { box-shadow: var(--ds-shadow-lg); }
+  .shadow-ds-xl { box-shadow: var(--ds-shadow-xl); }
+}
+
+/* ========================================
+ * Custom Scrollbar
+ * ======================================== */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -94,4 +288,57 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* ========================================
+ * Focus Styles
+ * ======================================== */
+:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+}
+
+/* ========================================
+ * Density Modes
+ * ======================================== */
+[data-density="comfortable"] {
+  --ds-spacing-page: 1.5rem;
+  --ds-spacing-card: 1.5rem;
+  --ds-spacing-section: 2rem;
+}
+
+[data-density="dense"] {
+  --ds-spacing-page: 1rem;
+  --ds-spacing-card: 1rem;
+  --ds-spacing-section: 1.5rem;
+}
+
+/* ========================================
+ * Animation
+ * ======================================== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.3s ease-out;
 }

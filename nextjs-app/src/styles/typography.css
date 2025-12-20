@@ -1,0 +1,310 @@
+/**
+ * ============================================
+ * Deep Solution Design System - Typography
+ * ============================================
+ * 
+ * Arabic-first typography system optimized for:
+ * - Long reading sessions
+ * - RTL layout
+ * - Mixed Arabic/English content
+ * 
+ * Primary Font: IBM Plex Sans Arabic
+ * - Excellent Arabic support
+ * - Clean, professional appearance
+ * - Good readability at all sizes
+ * - Supports both Arabic and Latin characters
+ * ============================================
+ */
+
+/* ========================================
+ * Font Imports (Google Fonts)
+ * ======================================== */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap');
+
+/* ========================================
+ * Font Family Definitions
+ * ======================================== */
+:root {
+  /* Primary font stack - Arabic first */
+  --ds-font-primary: 'IBM Plex Sans Arabic', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  
+  /* Monospace for code/numbers */
+  --ds-font-mono: 'IBM Plex Mono', 'Fira Code', 'Consolas', monospace;
+  
+  /* ========================================
+   * Font Weights
+   * ======================================== */
+  --ds-font-light: 300;
+  --ds-font-regular: 400;
+  --ds-font-medium: 500;
+  --ds-font-semibold: 600;
+  --ds-font-bold: 700;
+  
+  /* ========================================
+   * Typographic Scale
+   * Based on 1.25 ratio (Major Third)
+   * ======================================== */
+  
+  /* Display - Hero sections, landing pages */
+  --ds-text-display: 3rem;        /* 48px */
+  --ds-leading-display: 1.1;
+  --ds-tracking-display: -0.02em;
+  
+  /* Page Title - Main page headings */
+  --ds-text-page-title: 2rem;     /* 32px */
+  --ds-leading-page-title: 1.2;
+  --ds-tracking-page-title: -0.015em;
+  
+  /* Section Title - Section headings */
+  --ds-text-section-title: 1.5rem; /* 24px */
+  --ds-leading-section-title: 1.3;
+  --ds-tracking-section-title: -0.01em;
+  
+  /* Subsection - Card titles, list headers */
+  --ds-text-subsection: 1.25rem;  /* 20px */
+  --ds-leading-subsection: 1.4;
+  --ds-tracking-subsection: -0.005em;
+  
+  /* Body Large - Emphasized body text */
+  --ds-text-body-lg: 1.125rem;    /* 18px */
+  --ds-leading-body-lg: 1.6;
+  --ds-tracking-body-lg: 0;
+  
+  /* Body - Default body text */
+  --ds-text-body: 1rem;           /* 16px */
+  --ds-leading-body: 1.6;
+  --ds-tracking-body: 0;
+  
+  /* Body Small - Secondary text */
+  --ds-text-body-sm: 0.875rem;    /* 14px */
+  --ds-leading-body-sm: 1.5;
+  --ds-tracking-body-sm: 0;
+  
+  /* Small - Helper text, captions */
+  --ds-text-small: 0.8125rem;     /* 13px */
+  --ds-leading-small: 1.5;
+  --ds-tracking-small: 0.005em;
+  
+  /* Tiny - Labels, badges */
+  --ds-text-tiny: 0.75rem;        /* 12px */
+  --ds-leading-tiny: 1.4;
+  --ds-tracking-tiny: 0.01em;
+  
+  /* Table - Optimized for data tables */
+  --ds-text-table: 0.875rem;      /* 14px */
+  --ds-leading-table: 1.4;
+  --ds-tracking-table: 0;
+  
+  /* Table Header */
+  --ds-text-table-header: 0.8125rem; /* 13px */
+  --ds-leading-table-header: 1.3;
+  --ds-tracking-table-header: 0.02em;
+}
+
+/* ========================================
+ * Base Typography Styles
+ * ======================================== */
+html {
+  font-family: var(--ds-font-primary);
+  font-size: 16px;
+  line-height: var(--ds-leading-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--ds-font-primary);
+  font-size: var(--ds-text-body);
+  font-weight: var(--ds-font-regular);
+  line-height: var(--ds-leading-body);
+  letter-spacing: var(--ds-tracking-body);
+  color: var(--ds-fg-primary);
+}
+
+/* ========================================
+ * RTL-Specific Adjustments
+ * ======================================== */
+[dir="rtl"], 
+html[dir="rtl"],
+:root {
+  /* Slightly tighter letter-spacing for Arabic */
+  --ds-tracking-body: -0.005em;
+  --ds-tracking-body-sm: 0;
+  
+  /* Arabic text benefits from slightly more line height */
+  --ds-leading-body: 1.7;
+  --ds-leading-body-lg: 1.65;
+}
+
+/* ========================================
+ * Heading Styles
+ * ======================================== */
+.ds-display {
+  font-size: var(--ds-text-display);
+  font-weight: var(--ds-font-bold);
+  line-height: var(--ds-leading-display);
+  letter-spacing: var(--ds-tracking-display);
+  color: var(--ds-fg-primary);
+}
+
+.ds-page-title {
+  font-size: var(--ds-text-page-title);
+  font-weight: var(--ds-font-semibold);
+  line-height: var(--ds-leading-page-title);
+  letter-spacing: var(--ds-tracking-page-title);
+  color: var(--ds-fg-primary);
+}
+
+.ds-section-title {
+  font-size: var(--ds-text-section-title);
+  font-weight: var(--ds-font-semibold);
+  line-height: var(--ds-leading-section-title);
+  letter-spacing: var(--ds-tracking-section-title);
+  color: var(--ds-fg-primary);
+}
+
+.ds-subsection {
+  font-size: var(--ds-text-subsection);
+  font-weight: var(--ds-font-medium);
+  line-height: var(--ds-leading-subsection);
+  letter-spacing: var(--ds-tracking-subsection);
+  color: var(--ds-fg-primary);
+}
+
+/* ========================================
+ * Body Text Styles
+ * ======================================== */
+.ds-body-lg {
+  font-size: var(--ds-text-body-lg);
+  font-weight: var(--ds-font-regular);
+  line-height: var(--ds-leading-body-lg);
+  letter-spacing: var(--ds-tracking-body-lg);
+}
+
+.ds-body {
+  font-size: var(--ds-text-body);
+  font-weight: var(--ds-font-regular);
+  line-height: var(--ds-leading-body);
+  letter-spacing: var(--ds-tracking-body);
+}
+
+.ds-body-sm {
+  font-size: var(--ds-text-body-sm);
+  font-weight: var(--ds-font-regular);
+  line-height: var(--ds-leading-body-sm);
+  letter-spacing: var(--ds-tracking-body-sm);
+}
+
+.ds-small {
+  font-size: var(--ds-text-small);
+  font-weight: var(--ds-font-regular);
+  line-height: var(--ds-leading-small);
+  letter-spacing: var(--ds-tracking-small);
+  color: var(--ds-fg-secondary);
+}
+
+.ds-tiny {
+  font-size: var(--ds-text-tiny);
+  font-weight: var(--ds-font-medium);
+  line-height: var(--ds-leading-tiny);
+  letter-spacing: var(--ds-tracking-tiny);
+  color: var(--ds-fg-tertiary);
+}
+
+/* ========================================
+ * Table Typography
+ * ======================================== */
+.ds-table-text {
+  font-size: var(--ds-text-table);
+  font-weight: var(--ds-font-regular);
+  line-height: var(--ds-leading-table);
+  letter-spacing: var(--ds-tracking-table);
+}
+
+.ds-table-header {
+  font-size: var(--ds-text-table-header);
+  font-weight: var(--ds-font-semibold);
+  line-height: var(--ds-leading-table-header);
+  letter-spacing: var(--ds-tracking-table-header);
+  text-transform: uppercase;
+  color: var(--ds-fg-secondary);
+}
+
+/* ========================================
+ * Utility Classes
+ * ======================================== */
+.ds-text-muted {
+  color: var(--ds-fg-muted);
+}
+
+.ds-text-secondary {
+  color: var(--ds-fg-secondary);
+}
+
+.ds-text-primary {
+  color: var(--ds-fg-primary);
+}
+
+.ds-text-brand {
+  color: var(--ds-interactive-primary);
+}
+
+.ds-text-accent {
+  color: var(--ds-interactive-secondary);
+}
+
+/* Font weights */
+.ds-font-light { font-weight: var(--ds-font-light); }
+.ds-font-regular { font-weight: var(--ds-font-regular); }
+.ds-font-medium { font-weight: var(--ds-font-medium); }
+.ds-font-semibold { font-weight: var(--ds-font-semibold); }
+.ds-font-bold { font-weight: var(--ds-font-bold); }
+
+/* ========================================
+ * Number & Currency Formatting
+ * ======================================== */
+.ds-number {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.ds-currency {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  direction: ltr;
+  unicode-bidi: embed;
+}
+
+/* ========================================
+ * Link Styles
+ * ======================================== */
+.ds-link {
+  color: var(--ds-interactive-primary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.ds-link:hover {
+  color: var(--ds-interactive-primary-hover);
+  text-decoration: underline;
+}
+
+.ds-link:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ========================================
+ * Selection Styles
+ * ======================================== */
+::selection {
+  background: var(--ds-blue-200);
+  color: var(--ds-navy-900);
+}
+
+.dark ::selection {
+  background: var(--ds-blue-700);
+  color: var(--ds-gray-50);
+}

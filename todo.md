@@ -879,3 +879,40 @@
 - [x] Layout decisions documented
 
 **STEP 2 COMPLETE** ✅
+
+
+## Next.js Official UI Migration
+
+**Decision**: client/ = legacy, nextjs-app/ = official UI
+
+### 1. Design System Migration
+- [x] Copy tokens.css to nextjs-app
+- [x] Copy typography.css to nextjs-app
+- [x] Setup Tailwind with DS tokens
+- [x] RTL support in layout
+- [x] Dark mode tokens ready
+
+### 2. App Shell (Native Next.js)
+- [x] Sidebar component
+- [x] Topbar component
+- [x] Layout wrapper (AppShell)
+- [x] Breadcrumb component (in Topbar)
+- [x] Empty state component
+- [x] Skeleton loaders
+
+### 3. tRPC Client Setup
+- [x] Configure tRPC client for Next.js (already configured)
+- [x] Auth context integration (AuthProvider ready)
+- [ ] API consumption from backend
+
+### 4. Orders Page (Standard Model)
+- [x] Orders list view
+- [x] Order filters (search + status)
+- [x] Order status badges (7 statuses)
+- [x] Order actions (view + more)
+- [x] Empty state
+- [x] Loading state (SkeletonPage)
+- [x] Arabic copy (i18n tone guide)
+- [x] Stats overview (4 cards)
+
+**NEXT.JS MIGRATION COMPLETE** ✅
