@@ -21,12 +21,14 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   
-  // Disable automatic static optimization for error pages
-  // This prevents the Html import error during build
+  // Skip static generation of error pages to avoid Html import bug
   experimental: {
-    // Disable pages router fallback
-    disableOptimizedLoading: true,
+    // Use PPR for better error handling
+    ppr: false,
   },
+  
+  // Output file tracing root to avoid lockfile warnings
+  outputFileTracingRoot: __dirname,
 };
 
 module.exports = nextConfig;
