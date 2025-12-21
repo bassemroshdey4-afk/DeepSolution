@@ -1,7 +1,6 @@
 'use client';
 
-import { createContext, useContext, ReactNode } from 'react';
-import { trpc } from '@/lib/trpc';
+import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import { getLoginUrl } from '@/lib/utils';
 
 interface User {
@@ -27,23 +26,47 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: user, isLoading } = trpc.auth.me.useQuery(undefined, {
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
+  const [user, setUser] = useState<User | null | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => {
+  useEffect(() => {
+    // Check auth status on mount
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        } else {
+          setUser(null);
+        }
+      } catch {
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      setUser(null);
       window.location.href = '/';
-    },
-  });
+    } catch {
+      // Still redirect on error
+      window.location.href = '/';
+    }
+  };
 
   const value: AuthContextType = {
-    user: user as User | null | undefined,
+    user,
     isLoading,
     isAuthenticated: !!user,
     loginUrl: getLoginUrl(),
-    logout: () => logoutMutation.mutate(),
+    logout,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

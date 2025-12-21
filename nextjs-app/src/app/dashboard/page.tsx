@@ -17,7 +17,6 @@ export const dynamic = 'force-dynamic';
 
 import { AppShell, SkeletonPage, EmptyState } from '@/components/layout';
 import { useAuth } from '@/contexts/AuthContext';
-import { trpc } from '@/lib/trpc';
 import { cn } from '@/lib/utils';
 import {
   Package,
@@ -35,6 +34,7 @@ import {
   Zap,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
 
 interface StatCardProps {
   title: string;
@@ -205,50 +205,24 @@ function QuickActionCard({
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading, logout } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch dashboard stats using existing backend APIs
-  // products.list doesn't take parameters - it returns all products for tenant
-  const { data: products, isLoading: statsLoading } = trpc.products.list.useQuery(
-    undefined,
-    { enabled: !!user?.tenantId }
-  );
+  // Simulate loading state
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
-  // orders.list also doesn't take parameters
-  const { data: ordersList, isLoading: ordersLoading } = trpc.orders.list.useQuery(
-    undefined,
-    { enabled: !!user?.tenantId }
-  );
-
-  const { data: walletData, isLoading: walletLoading } = trpc.wallet.getBalance.useQuery(
-    undefined,
-    { enabled: !!user?.tenantId }
-  );
-
-  // Note: profit.getSummary doesn't exist - using placeholder data
-  const profitData = { netProfit: 0, growth: 0 };
-  const profitLoading = false;
-
-  const isLoading = statsLoading || ordersLoading || walletLoading;
-
-  // Calculate stats from products array
+  // Placeholder data - will be replaced with real API calls
   const stats = {
-    total: products?.length || 0
+    products: 0,
+    orders: 0,
+    walletBalance: 0,
+    netProfit: 0,
+    profitGrowth: 0,
   };
 
-  // Calculate orders stats
-  const orders = {
-    total: Array.isArray(ordersList) ? ordersList.length : 0
-  };
-
-  // Transform orders data for display (take last 5)
-  const recentOrders: RecentOrder[] = (Array.isArray(ordersList) ? ordersList.slice(0, 5) : []).map((order: any) => ({
-    id: order.id,
-    orderNumber: order.orderNumber || order.order_number || `#${order.id?.slice(0, 8) || '---'}`,
-    customerName: order.customerName || order.customer_name || 'عميل',
-    total: order.total || order.total_amount || 0,
-    status: order.status || 'pending',
-    createdAt: order.createdAt || order.created_at,
-  }));
+  const recentOrders: RecentOrder[] = [];
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -282,31 +256,31 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
           title="إجمالي المنتجات"
-          value={stats?.total || 0}
+          value={stats.products}
           icon={Package}
           loading={isLoading}
         />
         <StatCard
           title="إجمالي الطلبات"
-          value={orders?.total || 0}
+          value={stats.orders}
           icon={ShoppingCart}
           loading={isLoading}
           color="info"
         />
         <StatCard
           title="رصيد المحفظة"
-          value={formatCurrency(walletData?.balance || 0)}
+          value={formatCurrency(stats.walletBalance)}
           icon={Wallet}
           loading={isLoading}
           color="warning"
         />
         <StatCard
           title="صافي الربح (الشهر)"
-          value={formatCurrency(profitData?.netProfit || 0)}
+          value={formatCurrency(stats.netProfit)}
           icon={TrendingUp}
           trend={
-            profitData?.growth
-              ? { value: profitData.growth, isPositive: profitData.growth > 0 }
+            stats.profitGrowth
+              ? { value: stats.profitGrowth, isPositive: stats.profitGrowth > 0 }
               : undefined
           }
           loading={isLoading}
@@ -348,7 +322,7 @@ export default function DashboardPage() {
             href="/ai-pipeline"
             icon={Zap}
             title="Deep Intelligence™"
-            description="تحليل ذكي لمنتجاتك وتوصيات استراتيجية"
+            description="تحليل ذكي لمنتجاتك"
           />
           <QuickActionCard
             href="/profit"

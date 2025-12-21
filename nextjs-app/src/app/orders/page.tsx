@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
 import { useState } from 'react';
 import { AppShell, EmptyState, SkeletonPage, SkeletonTable } from '@/components/layout';
 import { useAuth } from '@/contexts/AuthContext';
-import { trpc } from '@/lib/trpc';
+// trpc removed - using mock data for now
 import { cn } from '@/lib/utils';
 import {
   ShoppingCart,
