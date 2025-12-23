@@ -1029,3 +1029,9 @@
 - [x] DEPLOYMENT_OWNERSHIP.md
 - [x] SECURITY_ALPHA_RULES.md
 - [x] FEATURE_FLAGS.md
+
+
+## إصلاحات Next.js App
+- [x] إصلاح خطأ 404 في روابط تسجيل الدخول (تغيير /authorize إلى /app-auth)
+- [x] تمرير متغيرات البيئة VITE_* إلى Next.js عبر next.config.js
+- [x] تحديث getLoginUrl() لاستخدام المعاملات الصحيحة (appId, redirectUri, state, type)

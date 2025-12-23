@@ -29,6 +29,14 @@ const nextConfig = {
   
   // Output file tracing root to avoid lockfile warnings
   outputFileTracingRoot: __dirname,
+  
+  // Expose VITE_ environment variables to the client
+  env: {
+    NEXT_PUBLIC_APP_ID: process.env.VITE_APP_ID,
+    NEXT_PUBLIC_OAUTH_PORTAL_URL: process.env.VITE_OAUTH_PORTAL_URL,
+    NEXT_PUBLIC_APP_TITLE: process.env.VITE_APP_TITLE,
+    NEXT_PUBLIC_APP_LOGO: process.env.VITE_APP_LOGO,
+  },
 };
 
 module.exports = nextConfig;
