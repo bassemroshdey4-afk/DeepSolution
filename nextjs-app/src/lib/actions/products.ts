@@ -30,7 +30,7 @@ export interface Product extends ProductInput {
   updated_at: string;
 }
 
-// Get current user's tenant_id
+// Get current user's tenant_id - creates tenant if not exists
 async function getCurrentTenantId(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -54,7 +54,57 @@ async function getCurrentTenantId(supabase: Awaited<ReturnType<typeof createSupa
     .eq('id', user.id)
     .single();
   
-  return profile?.default_tenant_id || null;
+  if (profile?.default_tenant_id) {
+    return profile.default_tenant_id;
+  }
+  
+  // Auto-create tenant for new user
+  console.log('Creating new tenant for user:', user.id);
+  
+  // Create new tenant
+  const { data: newTenant, error: tenantError } = await supabase
+    .from('tenants')
+    .insert([{
+      name: user.email?.split('@')[0] || 'My Store',
+      subdomain: `store-${user.id.substring(0, 8)}`,
+      status: 'active',
+      plan: 'trial',
+      trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), // 14 days trial
+    }])
+    .select()
+    .single();
+  
+  if (tenantError || !newTenant) {
+    console.error('Error creating tenant:', tenantError);
+    return null;
+  }
+  
+  // Link user to tenant
+  const { error: linkError } = await supabase
+    .from('tenant_users')
+    .insert([{
+      tenant_id: newTenant.id,
+      user_id: user.id,
+      role: 'owner',
+    }]);
+  
+  if (linkError) {
+    console.error('Error linking user to tenant:', linkError);
+    return null;
+  }
+  
+  // Update profile with default_tenant_id
+  await supabase
+    .from('profiles')
+    .upsert([{
+      id: user.id,
+      default_tenant_id: newTenant.id,
+      email: user.email,
+      name: user.user_metadata?.name || user.email?.split('@')[0],
+    }]);
+  
+  console.log('Created new tenant:', newTenant.id);
+  return newTenant.id;
 }
 
 // Create a new product
