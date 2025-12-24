@@ -16,7 +16,6 @@ import {
   DeepIntelligenceThinking, 
   DeepIntelligenceSkeleton,
   PRODUCT_ANALYSIS_STAGES,
-  MARKETING_PIPELINE_STAGES,
 } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -30,9 +29,30 @@ import {
   TrendingUp,
   Users,
   CheckCircle2,
+  AlertCircle,
+  Zap,
+  MessageSquare,
 } from 'lucide-react';
 
 type PipelineStep = 'input' | 'analyzing' | 'results';
+
+interface AnalysisResult {
+  targetAudience: string[];
+  uniqueSellingPoints: string[];
+  pricingStrategy: {
+    suggestedPriceRange: string;
+    profitMargin: string;
+    priceSensitivity: string;
+  };
+  marketingChannels: Array<{
+    channel: string;
+    priority: string;
+  }>;
+  competitiveAdvantages: string[];
+  marketingMessages: string[];
+  summary: string;
+  isFallback?: boolean;
+}
 
 export default function DeepIntelligencePage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -40,23 +60,57 @@ export default function DeepIntelligencePage() {
   const [currentStage, setCurrentStage] = useState(0);
   const [productDescription, setProductDescription] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Simulate analysis process
+  // Real AI analysis
   const handleAnalyze = async () => {
     if (!productDescription.trim()) return;
     
     setStep('analyzing');
     setCurrentStage(0);
+    setError(null);
 
-    // Simulate stage progression
-    for (let i = 0; i < PRODUCT_ANALYSIS_STAGES.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setCurrentStage(i + 1);
+    // Simulate stage progression while waiting for API
+    const stageInterval = setInterval(() => {
+      setCurrentStage(prev => {
+        if (prev < PRODUCT_ANALYSIS_STAGES.length - 1) {
+          return prev + 1;
+        }
+        return prev;
+      });
+    }, 1500);
+
+    try {
+      const response = await fetch('/api/ai/analyze-product', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          description: productDescription,
+          imageUrl: selectedImage ? URL.createObjectURL(selectedImage) : null,
+        }),
+      });
+
+      const data = await response.json();
+
+      clearInterval(stageInterval);
+      setCurrentStage(PRODUCT_ANALYSIS_STAGES.length);
+
+      if (data.success && data.analysis) {
+        setAnalysisResult(data.analysis);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setStep('results');
+      } else {
+        throw new Error(data.error || 'فشل التحليل');
+      }
+    } catch (err) {
+      clearInterval(stageInterval);
+      console.error('Analysis error:', err);
+      setError('حدث خطأ أثناء التحليل. يرجى المحاولة مرة أخرى.');
+      setStep('input');
     }
-
-    // Move to results
-    await new Promise(resolve => setTimeout(resolve, 500));
-    setStep('results');
   };
 
   const handleReset = () => {
@@ -64,6 +118,8 @@ export default function DeepIntelligencePage() {
     setCurrentStage(0);
     setProductDescription('');
     setSelectedImage(null);
+    setAnalysisResult(null);
+    setError(null);
   };
 
   if (authLoading) {
@@ -83,6 +139,14 @@ export default function DeepIntelligencePage() {
           title="Deep Intelligence™"
           description="تحليل ذكي لمنتجاتك وتوصيات استراتيجية مبنية على البيانات"
         />
+
+        {/* Error Alert */}
+        {error && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-red-500" />
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
 
         {/* Input Step */}
         {step === 'input' && (
@@ -182,7 +246,7 @@ export default function DeepIntelligencePage() {
         )}
 
         {/* Results Step */}
-        {step === 'results' && (
+        {step === 'results' && analysisResult && (
           <div className="mt-8 space-y-6">
             {/* Success Header */}
             <div className="ds-card p-6 bg-primary/5 border-primary/20">
@@ -195,11 +259,20 @@ export default function DeepIntelligencePage() {
                     اكتمل التحليل الذكي
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    تم تحليل منتجك وإعداد التوصيات الاستراتيجية
+                    {analysisResult.isFallback 
+                      ? 'تم استخدام التحليل الافتراضي (يرجى التحقق من إعدادات API)'
+                      : 'تم تحليل منتجك وإعداد التوصيات الاستراتيجية'}
                   </p>
                 </div>
               </div>
             </div>
+
+            {/* Summary */}
+            {analysisResult.summary && (
+              <div className="ds-card p-6 bg-gradient-to-r from-primary/5 to-transparent">
+                <p className="text-foreground leading-relaxed">{analysisResult.summary}</p>
+              </div>
+            )}
 
             {/* Results Grid */}
             <div className="grid md:grid-cols-2 gap-6">
@@ -210,15 +283,11 @@ export default function DeepIntelligencePage() {
                   الجمهور المستهدف
                 </h4>
                 <div className="space-y-2">
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-sm">رجال الأعمال الشباب (25-40 سنة)</p>
-                  </div>
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-sm">المهتمون بالتقنية والابتكار</p>
-                  </div>
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-sm">أصحاب الدخل المتوسط-العالي</p>
-                  </div>
+                  {analysisResult.targetAudience.map((audience, index) => (
+                    <div key={index} className="p-3 bg-muted rounded-lg">
+                      <p className="text-sm">{audience}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -229,15 +298,11 @@ export default function DeepIntelligencePage() {
                   نقاط البيع الفريدة
                 </h4>
                 <div className="space-y-2">
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-sm">جودة عالية بسعر تنافسي</p>
-                  </div>
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-sm">تصميم عصري وأنيق</p>
-                  </div>
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-sm">ضمان شامل لمدة سنة</p>
-                  </div>
+                  {analysisResult.uniqueSellingPoints.map((usp, index) => (
+                    <div key={index} className="p-3 bg-muted rounded-lg">
+                      <p className="text-sm">{usp}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -250,15 +315,15 @@ export default function DeepIntelligencePage() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">السعر المقترح</span>
-                    <span className="font-semibold">299 - 399 ر.س</span>
+                    <span className="font-semibold">{analysisResult.pricingStrategy.suggestedPriceRange}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">هامش الربح المتوقع</span>
-                    <span className="font-semibold text-green-600">35-45%</span>
+                    <span className="font-semibold text-green-600">{analysisResult.pricingStrategy.profitMargin}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">حساسية السعر</span>
-                    <span className="font-semibold text-yellow-600">متوسطة</span>
+                    <span className="font-semibold text-yellow-600">{analysisResult.pricingStrategy.priceSensitivity}</span>
                   </div>
                 </div>
               </div>
@@ -270,20 +335,55 @@ export default function DeepIntelligencePage() {
                   القنوات التسويقية المقترحة
                 </h4>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <span className="text-sm">Instagram</span>
-                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">أولوية عالية</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <span className="text-sm">TikTok</span>
-                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">أولوية عالية</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <span className="text-sm">Snapchat</span>
-                    <span className="text-xs bg-muted-foreground/20 text-muted-foreground px-2 py-1 rounded">أولوية متوسطة</span>
-                  </div>
+                  {analysisResult.marketingChannels.map((channel, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                      <span className="text-sm">{channel.channel}</span>
+                      <span className={cn(
+                        'text-xs px-2 py-1 rounded',
+                        channel.priority === 'عالية' 
+                          ? 'bg-primary/10 text-primary' 
+                          : 'bg-muted-foreground/20 text-muted-foreground'
+                      )}>
+                        أولوية {channel.priority}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
+
+              {/* Competitive Advantages */}
+              {analysisResult.competitiveAdvantages && analysisResult.competitiveAdvantages.length > 0 && (
+                <div className="ds-card p-6">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-primary" />
+                    المزايا التنافسية
+                  </h4>
+                  <div className="space-y-2">
+                    {analysisResult.competitiveAdvantages.map((advantage, index) => (
+                      <div key={index} className="p-3 bg-muted rounded-lg">
+                        <p className="text-sm">{advantage}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Marketing Messages */}
+              {analysisResult.marketingMessages && analysisResult.marketingMessages.length > 0 && (
+                <div className="ds-card p-6">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5 text-primary" />
+                    رسائل تسويقية مقترحة
+                  </h4>
+                  <div className="space-y-2">
+                    {analysisResult.marketingMessages.map((message, index) => (
+                      <div key={index} className="p-3 bg-muted rounded-lg border-r-2 border-primary">
+                        <p className="text-sm italic">"{message}"</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
