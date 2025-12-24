@@ -4,15 +4,16 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Add New Product Page
- * صفحة إضافة منتج جديد
+ * صفحة إضافة منتج جديد - متصلة بـ Supabase
  */
 
 import { AppShell, SkeletonPage } from '@/components/layout';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowRight, Package, Upload, Save, X } from 'lucide-react';
+import { ArrowRight, Package, Upload, Save, X, AlertCircle, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { createProduct, type ProductInput } from '@/lib/actions/products';
 
 export default function NewProductPage() {
   const { user, isLoading: authLoading, signOut } = useAuth();
@@ -31,6 +32,10 @@ export default function NewProductPage() {
     quantity: '',
     category: '',
     status: 'active',
+    barcode: '',
+    low_stock_threshold: '5',
+    weight: '',
+    weight_unit: 'kg',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -52,9 +57,28 @@ export default function NewProductPage() {
         throw new Error('السعر يجب أن يكون أكبر من صفر');
       }
 
-      // TODO: Implement actual API call to create product
-      // For now, simulate success after validation
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Prepare product input
+      const productInput: ProductInput = {
+        name: formData.name.trim(),
+        description: formData.description.trim() || undefined,
+        sku: formData.sku.trim() || undefined,
+        price: parseFloat(formData.price) || 0,
+        cost: parseFloat(formData.cost) || 0,
+        quantity: parseInt(formData.quantity) || 0,
+        is_active: formData.status === 'active',
+        category: formData.category || undefined,
+        barcode: formData.barcode.trim() || undefined,
+        low_stock_threshold: parseInt(formData.low_stock_threshold) || 5,
+        weight: formData.weight ? parseFloat(formData.weight) : undefined,
+        weight_unit: formData.weight_unit || 'kg',
+      };
+
+      // Call server action
+      const result = await createProduct(productInput);
+
+      if (!result.success) {
+        throw new Error(result.error || 'حدث خطأ أثناء إنشاء المنتج');
+      }
 
       setSuccess(true);
       setTimeout(() => {
@@ -103,17 +127,23 @@ export default function NewProductPage() {
 
       {/* Success Message */}
       {success && (
-        <div className="mb-6 p-4 bg-success-50 border border-success-200 rounded-lg text-success-700">
-          <p className="font-medium">تم إنشاء المنتج بنجاح!</p>
-          <p className="text-sm">جاري التحويل لقائمة المنتجات...</p>
+        <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 flex items-start gap-3">
+          <CheckCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">تم إنشاء المنتج بنجاح!</p>
+            <p className="text-sm">جاري التحويل لقائمة المنتجات...</p>
+          </div>
         </div>
       )}
 
       {/* Error Message */}
       {error && (
-        <div className="mb-6 p-4 bg-error-50 border border-error-200 rounded-lg text-error-700">
-          <p className="font-medium">خطأ</p>
-          <p className="text-sm">{error}</p>
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">خطأ</p>
+            <p className="text-sm">{error}</p>
+          </div>
         </div>
       )}
 
@@ -129,7 +159,7 @@ export default function NewProductPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">
-                اسم المنتج <span className="text-error-500">*</span>
+                اسم المنتج <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -155,6 +185,18 @@ export default function NewProductPage() {
             </div>
 
             <div>
+              <label className="block text-sm font-medium mb-1">الباركود</label>
+              <input
+                type="text"
+                name="barcode"
+                value={formData.barcode}
+                onChange={handleChange}
+                placeholder="مثال: 6281000000000"
+                className="w-full px-4 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium mb-1">التصنيف</label>
               <select
                 name="category"
@@ -167,8 +209,23 @@ export default function NewProductPage() {
                 <option value="electronics">إلكترونيات</option>
                 <option value="accessories">إكسسوارات</option>
                 <option value="home">منزل ومطبخ</option>
+                <option value="beauty">جمال وعناية</option>
+                <option value="sports">رياضة</option>
                 <option value="other">أخرى</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">حد التنبيه للمخزون</label>
+              <input
+                type="number"
+                name="low_stock_threshold"
+                value={formData.low_stock_threshold}
+                onChange={handleChange}
+                placeholder="5"
+                min="0"
+                className="w-full px-4 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
             </div>
 
             <div className="md:col-span-2">
@@ -192,7 +249,7 @@ export default function NewProductPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">
-                سعر البيع <span className="text-error-500">*</span>
+                سعر البيع <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -203,7 +260,7 @@ export default function NewProductPage() {
                   placeholder="0.00"
                   min="0"
                   step="0.01"
-                  className="w-full px-4 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className="w-full px-4 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary pl-12"
                   required
                 />
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
@@ -223,7 +280,7 @@ export default function NewProductPage() {
                   placeholder="0.00"
                   min="0"
                   step="0.01"
-                  className="w-full px-4 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className="w-full px-4 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary pl-12"
                 />
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                   ر.س
@@ -246,11 +303,47 @@ export default function NewProductPage() {
           </div>
         </div>
 
+        {/* Weight */}
+        <div className="ds-card p-6">
+          <h2 className="text-lg font-semibold mb-4">الوزن والشحن</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">الوزن</label>
+              <input
+                type="number"
+                name="weight"
+                value={formData.weight}
+                onChange={handleChange}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                className="w-full px-4 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">وحدة الوزن</label>
+              <select
+                name="weight_unit"
+                value={formData.weight_unit}
+                onChange={handleChange}
+                className="w-full px-4 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              >
+                <option value="kg">كيلوغرام (kg)</option>
+                <option value="g">غرام (g)</option>
+                <option value="lb">رطل (lb)</option>
+                <option value="oz">أونصة (oz)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         {/* Status */}
         <div className="ds-card p-6">
           <h2 className="text-lg font-semibold mb-4">الحالة</h2>
           
-          <div className="flex gap-4">
+          <div className="flex gap-6">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="radio"
@@ -258,9 +351,10 @@ export default function NewProductPage() {
                 value="active"
                 checked={formData.status === 'active'}
                 onChange={handleChange}
-                className="w-4 h-4 text-primary"
+                className="w-4 h-4 text-primary accent-primary"
               />
               <span className="text-sm">نشط</span>
+              <span className="text-xs text-muted-foreground">(سيظهر في المتجر)</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -269,9 +363,10 @@ export default function NewProductPage() {
                 value="draft"
                 checked={formData.status === 'draft'}
                 onChange={handleChange}
-                className="w-4 h-4 text-primary"
+                className="w-4 h-4 text-primary accent-primary"
               />
               <span className="text-sm">مسودة</span>
+              <span className="text-xs text-muted-foreground">(لن يظهر في المتجر)</span>
             </label>
           </div>
         </div>
@@ -290,20 +385,20 @@ export default function NewProductPage() {
             </p>
             <button
               type="button"
-              className="mt-4 ds-btn-secondary px-4 py-2 rounded-lg text-sm"
-              title="قريباً"
+              className="mt-4 px-4 py-2 border border-border rounded-lg text-sm hover:bg-muted/50 transition-colors"
+              title="قريباً - رفع الصور"
               disabled
             >
-              اختيار الصور
+              اختيار الصور (قريباً)
             </button>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-3 pb-8">
           <Link
             href="/products"
-            className="ds-btn-secondary px-6 py-2 rounded-lg text-sm inline-flex items-center gap-2"
+            className="px-6 py-2 border border-border rounded-lg text-sm inline-flex items-center gap-2 hover:bg-muted/50 transition-colors"
           >
             <X className="h-4 w-4" />
             إلغاء
@@ -311,7 +406,7 @@ export default function NewProductPage() {
           <button
             type="submit"
             disabled={isSubmitting || success}
-            className="ds-btn-primary px-6 py-2 rounded-lg text-sm inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm inline-flex items-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting ? (
               <>
