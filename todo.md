@@ -1035,3 +1035,41 @@
 - [x] إصلاح خطأ 404 في روابط تسجيل الدخول (تغيير /authorize إلى /app-auth)
 - [x] تمرير متغيرات البيئة VITE_* إلى Next.js عبر next.config.js
 - [x] تحديث getLoginUrl() لاستخدام المعاملات الصحيحة (appId, redirectUri, state, type)
+
+
+## Vercel Deployment + OpenAI + n8n
+- [ ] دفع جميع التغييرات إلى GitHub repo
+- [ ] التحقق من Build أخضر 100% على Vercel
+- [ ] ربط OpenAI API
+- [ ] تجهيز n8n
+
+
+## إصلاح Login Redirect على Vercel
+- [ ] تحديث Supabase Site URL إلى https://deepsolution.vercel.app
+- [ ] إضافة Redirect URLs في Supabase Auth
+- [ ] التحقق من Google OAuth Authorized redirect URIs
+- [ ] اختبار تسجيل الدخول على Vercel
+
+
+## تحويل من Manus OAuth إلى Supabase Auth
+- [ ] تحليل الملفات الحالية وتحديد التغييرات المطلوبة
+- [ ] إنشاء صفحات Auth جديدة (login, signup, callback)
+- [ ] تحديث AuthContext لاستخدام Supabase
+- [ ] إزالة جميع مراجع Manus OAuth
+- [ ] إعداد متغيرات البيئة للـ environments المختلفة
+- [ ] دفع التغييرات إلى GitHub
+- [ ] اختبار تسجيل الدخول على Vercel
+
+
+## Supabase Auth Migration (Vercel Deployment) ✅
+- [x] تحويل من Manus OAuth إلى Supabase Auth
+- [x] إنشاء صفحة login جديدة مع Email/Password + Google OAuth
+- [x] تحديث AuthContext لاستخدام Supabase
+- [x] إزالة جميع مراجع Manus OAuth
+- [x] إعداد متغيرات البيئة للـ environments المختلفة
+- [x] تحديث Supabase Auth URL Configuration
+- [x] تفعيل Google OAuth في Supabase
+- [x] إضافة redirect URI في Google Cloud Console
+- [x] اختبار تسجيل الدخول على Vercel
+- [x] إصلاح PKCE flow باستخدام @supabase/ssr
+- [x] استخدام production URL للـ OAuth callbacks
