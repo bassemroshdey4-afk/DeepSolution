@@ -1,7 +1,5 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 /**
  * Products Page
  * إدارة المنتجات
