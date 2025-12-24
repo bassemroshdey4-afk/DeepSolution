@@ -12,17 +12,8 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { getProducts, getProductStats, deleteProduct } from '@/lib/actions/products';
 
-interface Product {
-  id: string;
-  name: string;
-  sku: string | null;
-  price: number | null;
-  cost: number | null;
-  quantity: number | null;
-  is_active: boolean;
-  category: string | null;
-  created_at: string;
-}
+// Import Product type from actions
+import type { Product } from '@/lib/actions/products';
 
 interface ProductStats {
   total: number;

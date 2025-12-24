@@ -249,7 +249,7 @@ export default function DashboardPage() {
       breadcrumbs={[{ label: 'لوحة التحكم' }]}
       title="لوحة التحكم"
       description={`نظرة عامة على أداء متجرك${user?.tenantName ? ` - ${user.tenantName}` : ''}`}
-      user={user ? { name: user.name || 'مستخدم', email: user.email } : null}
+      user={user ? { name: (user.name || 'مستخدم') as string, email: user.email } : null}
       onLogout={signOut}
     >
       {/* Stats Grid */}
