@@ -227,7 +227,7 @@ export default function OrdersPage() {
       ]}
       title="الطلبات"
       description="إدارة ومتابعة جميع الطلبات"
-      user={user ? { name: user.name, email: user.email } : null}
+      user={user ? { name: user.name || 'مستخدم', email: user.email } : null}
       headerActions={
         <div className="flex items-center gap-2">
           <button className="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-lg hover:bg-muted transition-colors">

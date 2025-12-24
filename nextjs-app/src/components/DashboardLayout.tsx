@@ -52,7 +52,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
-  const { user, logout, isLoading } = useAuth();
+  const { user, signOut, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -160,7 +160,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               )}
               {sidebarOpen && (
                 <button
-                  onClick={logout}
+                  onClick={signOut}
                   className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground"
                   title="تسجيل الخروج"
                 >
@@ -170,7 +170,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           ) : (
             <a
-              href="/api/oauth/login"
+              href="/login"
               className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
             >
               <User className="h-5 w-5" />

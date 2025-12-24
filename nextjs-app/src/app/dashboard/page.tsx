@@ -204,7 +204,7 @@ function QuickActionCard({
 }
 
 export default function DashboardPage() {
-  const { user, isLoading: authLoading, logout } = useAuth();
+  const { user, isLoading: authLoading, signOut } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
 
   // Simulate loading state
@@ -249,8 +249,8 @@ export default function DashboardPage() {
       breadcrumbs={[{ label: 'لوحة التحكم' }]}
       title="لوحة التحكم"
       description={`نظرة عامة على أداء متجرك${user?.tenantName ? ` - ${user.tenantName}` : ''}`}
-      user={user ? { name: user.name, email: user.email } : null}
-      onLogout={logout}
+      user={user ? { name: user.name || 'مستخدم', email: user.email } : null}
+      onLogout={signOut}
     >
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

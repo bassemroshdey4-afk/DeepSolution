@@ -5,20 +5,37 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// Generate login URL at runtime so redirect URI reflects the current origin.
-export function getLoginUrl() {
-  const oauthPortalUrl = process.env.NEXT_PUBLIC_OAUTH_PORTAL_URL || 'https://manus.im';
-  const appId = process.env.NEXT_PUBLIC_APP_ID || '';
-  const redirectUri = typeof window !== 'undefined' 
-    ? `${window.location.origin}/api/oauth/callback`
-    : '';
-  const state = typeof window !== 'undefined' ? btoa(redirectUri) : '';
+// Format currency with locale support
+export function formatCurrency(amount: number, currency: string = 'EGP'): string {
+  return new Intl.NumberFormat('ar-EG', {
+    style: 'currency',
+    currency,
+  }).format(amount);
+}
 
-  const url = new URL(`${oauthPortalUrl}/app-auth`);
-  url.searchParams.set('appId', appId);
-  url.searchParams.set('redirectUri', redirectUri);
-  url.searchParams.set('state', state);
-  url.searchParams.set('type', 'signIn');
+// Format date with Arabic locale
+export function formatDate(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return new Intl.DateTimeFormat('ar-EG', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(d);
+}
 
-  return url.toString();
+// Format relative time
+export function formatRelativeTime(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'الآن';
+  if (diffMins < 60) return `منذ ${diffMins} دقيقة`;
+  if (diffHours < 24) return `منذ ${diffHours} ساعة`;
+  if (diffDays < 7) return `منذ ${diffDays} يوم`;
+  
+  return formatDate(d);
 }

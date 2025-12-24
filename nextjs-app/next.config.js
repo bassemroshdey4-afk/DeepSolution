@@ -30,11 +30,16 @@ const nextConfig = {
   // Output file tracing root to avoid lockfile warnings
   outputFileTracingRoot: __dirname,
   
-  // Expose VITE_ environment variables to the client
+  // Environment variables mapping
   env: {
-    NEXT_PUBLIC_APP_ID: process.env.VITE_APP_ID,
-    NEXT_PUBLIC_OAUTH_PORTAL_URL: process.env.VITE_OAUTH_PORTAL_URL,
-    NEXT_PUBLIC_APP_TITLE: process.env.VITE_APP_TITLE,
+    // Supabase (use existing env vars if available)
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
+    // Site URL for OAuth redirects
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+    NEXT_PUBLIC_VERCEL_URL: process.env.VERCEL_URL,
+    // App branding
+    NEXT_PUBLIC_APP_TITLE: process.env.VITE_APP_TITLE || 'DeepSolution',
     NEXT_PUBLIC_APP_LOGO: process.env.VITE_APP_LOGO,
   },
 };
