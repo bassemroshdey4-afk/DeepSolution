@@ -35,14 +35,26 @@ async function getCurrentTenantId(supabase: Awaited<ReturnType<typeof createSupa
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   
-  // Get tenant_id from profiles or tenant_users table
+  // First, try to get tenant_id from tenant_users table
+  const { data: tenantUser } = await supabase
+    .from('tenant_users')
+    .select('tenant_id')
+    .eq('user_id', user.id)
+    .limit(1)
+    .single();
+  
+  if (tenantUser?.tenant_id) {
+    return tenantUser.tenant_id;
+  }
+  
+  // Fallback: try profiles table with default_tenant_id
   const { data: profile } = await supabase
     .from('profiles')
-    .select('tenant_id')
+    .select('default_tenant_id')
     .eq('id', user.id)
     .single();
   
-  return profile?.tenant_id || null;
+  return profile?.default_tenant_id || null;
 }
 
 // Create a new product
