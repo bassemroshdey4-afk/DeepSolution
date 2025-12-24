@@ -61,15 +61,12 @@ async function getCurrentTenantId(supabase: Awaited<ReturnType<typeof createSupa
   // Auto-create tenant for new user
   console.log('Creating new tenant for user:', user.id);
   
-  // Create new tenant
+  // Create new tenant - using only existing columns: id, name, slug
   const { data: newTenant, error: tenantError } = await supabase
     .from('tenants')
     .insert([{
       name: user.email?.split('@')[0] || 'My Store',
-      subdomain: `store-${user.id.substring(0, 8)}`,
-      status: 'active',
-      plan: 'trial',
-      trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), // 14 days trial
+      slug: `store-${user.id.substring(0, 8)}-${Date.now().toString(36)}`,
     }])
     .select()
     .single();
