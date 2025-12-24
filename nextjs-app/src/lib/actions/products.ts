@@ -30,10 +30,15 @@ export interface Product extends ProductInput {
   updated_at: string;
 }
 
-// Get current user's tenant_id - creates tenant if not exists
+// Get current user's tenant_id - uses first available tenant for testing
 async function getCurrentTenantId(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) {
+    console.log('No authenticated user found');
+    return null;
+  }
+  
+  console.log('User authenticated:', user.id, user.email);
   
   // First, try to get tenant_id from tenant_users table
   const { data: tenantUser } = await supabase
@@ -44,6 +49,7 @@ async function getCurrentTenantId(supabase: Awaited<ReturnType<typeof createSupa
     .single();
   
   if (tenantUser?.tenant_id) {
+    console.log('Found tenant from tenant_users:', tenantUser.tenant_id);
     return tenantUser.tenant_id;
   }
   
@@ -55,53 +61,37 @@ async function getCurrentTenantId(supabase: Awaited<ReturnType<typeof createSupa
     .single();
   
   if (profile?.default_tenant_id) {
+    console.log('Found tenant from profiles:', profile.default_tenant_id);
     return profile.default_tenant_id;
   }
   
-  // Auto-create tenant for new user
-  console.log('Creating new tenant for user:', user.id);
-  
-  // Create new tenant - using only existing columns: id, name, slug
-  const { data: newTenant, error: tenantError } = await supabase
+  // TEMPORARY FIX: Use first available tenant for testing
+  // This allows testing CRUD without complex tenant setup
+  console.log('No tenant found for user, using first available tenant for testing...');
+  const { data: firstTenant } = await supabase
     .from('tenants')
-    .insert([{
-      name: user.email?.split('@')[0] || 'My Store',
-      slug: `store-${user.id.substring(0, 8)}-${Date.now().toString(36)}`,
-    }])
-    .select()
+    .select('id')
+    .limit(1)
     .single();
   
-  if (tenantError || !newTenant) {
-    console.error('Error creating tenant:', tenantError);
-    return null;
+  if (firstTenant?.id) {
+    console.log('Using first tenant for testing:', firstTenant.id);
+    
+    // Link user to this tenant automatically
+    await supabase
+      .from('tenant_users')
+      .insert([{
+        tenant_id: firstTenant.id,
+        user_id: user.id,
+        role: 'owner',
+      }])
+      .select();
+    
+    return firstTenant.id;
   }
   
-  // Link user to tenant
-  const { error: linkError } = await supabase
-    .from('tenant_users')
-    .insert([{
-      tenant_id: newTenant.id,
-      user_id: user.id,
-      role: 'owner',
-    }]);
-  
-  if (linkError) {
-    console.error('Error linking user to tenant:', linkError);
-    return null;
-  }
-  
-  // Update profile with default_tenant_id
-  await supabase
-    .from('profiles')
-    .upsert([{
-      id: user.id,
-      default_tenant_id: newTenant.id,
-      email: user.email,
-      name: user.user_metadata?.name || user.email?.split('@')[0],
-    }]);
-  
-  console.log('Created new tenant:', newTenant.id);
-  return newTenant.id;
+  console.log('No tenants found in database');
+  return null;
 }
 
 // Create a new product
