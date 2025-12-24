@@ -76,7 +76,7 @@
 - [x] اختبار حالة onboarding
 - [ ] اختبار عزل البيانات بين المستأجرين
 - [ ] اختبار تدفقات المستخدم الكاملة
-- [ ] إنشاء توثيق شامل للمطورين
+- [x] إنشاء توثيق شامل للمطورين (ROUTES.md, DEPLOYMENT_OWNERSHIP.md, SUPABASE_AUTH_SETUP.md)
 - [ ] إنشاء دليل المستخدم بالعربية
 - [ ] إعداد بيانات تجريبية (seed data)
 
@@ -1073,3 +1073,35 @@
 - [x] اختبار تسجيل الدخول على Vercel
 - [x] إصلاح PKCE flow باستخدام @supabase/ssr
 - [x] استخدام production URL للـ OAuth callbacks
+
+
+## إصلاح جذري شامل لـ 404 على Vercel
+### A) تشخيص 404 بدقة
+- [ ] مراجعة Vercel build + runtime logs
+- [ ] مراجعة nextjs-app/src/app/ structure
+- [ ] مراجعة روابط Sidebar/Navigation
+- [ ] مراجعة middleware.ts
+- [ ] مراجعة Auth callback route
+
+### B) تنظيف جذري للمسار القديم
+- [ ] التأكد من أن Vercel يبني nextjs-app فقط
+- [ ] مراجعة root package.json وworkspace settings
+- [ ] إضافة/تحديث vercel.json
+
+### C) إصلاح Routing داخل Next.js
+- [ ] التأكد من وجود جميع الصفحات المطلوبة
+- [ ] توحيد المسارات مع روابط Sidebar
+- [ ] إضافة Placeholder pages للصفحات غير المكتملة
+
+### D) إصلاح التوجيه بعد تسجيل الدخول
+- [ ] مراجعة تدفق Auth الكامل
+- [ ] التأكد من redirect صحيح بعد login
+
+### E) إصلاح tRPC/TypeScript collisions
+- [ ] مراجعة router/procedures للتعارضات
+- [ ] تأكيد نجاح pnpm test + pnpm build
+
+### F) التحقق النهائي
+- [ ] إنشاء ROUTES.md
+- [ ] إنشاء DEPLOYMENT_OWNERSHIP.md
+- [ ] اختبار جميع الصفحات على Vercel
