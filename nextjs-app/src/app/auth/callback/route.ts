@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
@@ -18,15 +18,24 @@ export async function GET(request: NextRequest) {
   }
 
   if (code) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const response = NextResponse.redirect(new URL(next, requestUrl.origin));
     
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              response.cookies.set(name, value, options);
+            });
+          },
+        },
+      }
+    );
 
     try {
       const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
@@ -39,7 +48,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Successful authentication - redirect to dashboard or specified next URL
-      return NextResponse.redirect(new URL(next, requestUrl.origin));
+      return response;
     } catch (err) {
       console.error('Unexpected error during auth callback:', err);
       return NextResponse.redirect(
