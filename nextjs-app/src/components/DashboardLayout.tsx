@@ -170,7 +170,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           ) : (
             <a
-              href="/api/oauth/login"
+              href="/login"
               className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
             >
               <User className="h-5 w-5" />

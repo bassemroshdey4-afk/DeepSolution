@@ -6,20 +6,20 @@ export const dynamic = 'force-dynamic';
 /**
  * Orders Page
  * 
- * Standard model page for the platform with:
+ * Full CRUD for orders with:
+ * - Real API integration
  * - Stats overview
  * - Filters and search
  * - Orders table
  * - Status badges
  * - Actions
- * 
- * Arabic copy follows I18N_TONE_GUIDE.md
  */
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppShell, EmptyState, SkeletonPage, SkeletonTable } from '@/components/layout';
 import { useAuth } from '@/contexts/AuthContext';
-// trpc removed - using mock data for now
+import { useOrders, orderApi, Order } from '@/hooks/useApi';
 import { cn } from '@/lib/utils';
 import {
   ShoppingCart,
@@ -29,13 +29,14 @@ import {
   XCircle,
   Clock,
   Search,
-  Filter,
   Download,
   Plus,
   ChevronDown,
   Eye,
   MoreHorizontal,
   RefreshCw,
+  X,
+  AlertCircle,
 } from 'lucide-react';
 
 // Order status configuration
@@ -51,30 +52,8 @@ const orderStatuses = {
 
 type OrderStatus = keyof typeof orderStatuses;
 
-// SECURITY: No mock data - orders will be fetched from API after authentication
-// Empty array until real data is loaded from Supabase
-const mockOrders: Array<{
-  id: string;
-  customerName: string;
-  customerPhone: string;
-  total: number;
-  status: OrderStatus;
-  items: number;
-  createdAt: Date;
-  city: string;
-}> = [];
-
-// SECURITY: No mock stats - will be fetched from API after authentication
-const mockStats = {
-  total: 0,
-  pending: 0,
-  shipped: 0,
-  delivered: 0,
-  revenue: 0,
-};
-
 function StatusBadge({ status }: { status: OrderStatus }) {
-  const config = orderStatuses[status];
+  const config = orderStatuses[status] || orderStatuses.pending;
   const Icon = config.icon;
   
   return (
@@ -111,7 +90,6 @@ function StatCard({
     <div 
       className={cn(
         'ds-card-stat hover-lift',
-        // Stagger animation
         'animate-fade-in-up',
         index === 0 && 'stagger-1',
         index === 1 && 'stagger-2',
@@ -133,28 +111,193 @@ function StatCard({
   );
 }
 
+// Order Modal for Create/Edit
+function OrderModal({
+  order,
+  onClose,
+  onSave,
+}: {
+  order?: Order | null;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const [formData, setFormData] = useState({
+    customer_name: order?.customer_name || '',
+    customer_phone: order?.customer_phone || '',
+    customer_email: order?.customer_email || '',
+    shipping_address: order?.shipping_address || '',
+    city: order?.city || '',
+    notes: order?.notes || '',
+    status: order?.status || 'pending',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (order) {
+        await orderApi.update(order.id, formData);
+      } else {
+        await orderApi.create({
+          ...formData,
+          items: [], // For new orders, items would be added separately
+        });
+      }
+      onSave();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'حدث خطأ');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-background rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h2 className="text-lg font-semibold">
+            {order ? 'تعديل الطلب' : 'طلب جديد'}
+          </h2>
+          <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {error && (
+            <div className="p-3 bg-error-100 text-error-600 rounded-lg flex items-center gap-2">
+              <AlertCircle className="h-5 w-5" />
+              {error}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium mb-1">اسم العميل *</label>
+            <input
+              type="text"
+              value={formData.customer_name}
+              onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">رقم الهاتف *</label>
+              <input
+                type="tel"
+                value={formData.customer_phone}
+                onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">البريد الإلكتروني</label>
+              <input
+                type="email"
+                value={formData.customer_email}
+                onChange={(e) => setFormData({ ...formData, customer_email: e.target.value })}
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">عنوان الشحن *</label>
+            <textarea
+              value={formData.shipping_address}
+              onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              rows={2}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">المدينة *</label>
+            <input
+              type="text"
+              value={formData.city}
+              onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              required
+            />
+          </div>
+
+          {order && (
+            <div>
+              <label className="block text-sm font-medium mb-1">الحالة</label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value as OrderStatus })}
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              >
+                {Object.entries(orderStatuses).map(([key, config]) => (
+                  <option key={key} value={key}>{config.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium mb-1">ملاحظات</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              rows={2}
+            />
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-border rounded-lg hover:bg-muted"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+            >
+              {loading ? 'جاري الحفظ...' : 'حفظ'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function OrdersPage() {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
-  const [isLoading, setIsLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
-  // SECURITY: Redirect unauthenticated users to login
+  // Use real API
+  const { orders, stats, loading, error, refetch } = useOrders({
+    search: searchQuery || undefined,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+  });
+
+  // Redirect unauthenticated users to login
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      window.location.href = '/login?redirect=/orders';
+      router.push('/login?redirect=/orders');
     }
-  }, [authLoading, isAuthenticated]);
-
-  // Filter orders
-  const filteredOrders = mockOrders.filter(order => {
-    const matchesSearch = 
-      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customerName.includes(searchQuery) ||
-      order.customerPhone.includes(searchQuery);
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  }, [authLoading, isAuthenticated, router]);
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -165,16 +308,16 @@ export default function OrdersPage() {
   };
 
   // Format date
-  const formatDate = (date: Date) => {
+  const formatDate = (dateStr: string) => {
     return new Intl.DateTimeFormat('ar-SA', {
       day: 'numeric',
       month: 'short',
       hour: '2-digit',
       minute: '2-digit',
-    }).format(date);
+    }).format(new Date(dateStr));
   };
 
-  // SECURITY: Show loading while checking auth, or if not authenticated
+  // Show loading while checking auth
   if (authLoading || !isAuthenticated) {
     return (
       <AppShell
@@ -201,7 +344,13 @@ export default function OrdersPage() {
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">تصدير</span>
           </button>
-          <button className="ds-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg">
+          <button 
+            onClick={() => {
+              setEditingOrder(null);
+              setShowModal(true);
+            }}
+            className="ds-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg"
+          >
             <Plus className="h-4 w-4" />
             <span>طلب جديد</span>
           </button>
@@ -212,28 +361,28 @@ export default function OrdersPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
           title="إجمالي الطلبات"
-          value={mockStats.total}
+          value={stats.total || 0}
           icon={ShoppingCart}
           trend="هذا الشهر"
           index={0}
         />
         <StatCard
           title="قيد الانتظار"
-          value={mockStats.pending}
+          value={stats.pending || 0}
           icon={Clock}
           color="warning"
           index={1}
         />
         <StatCard
           title="تم الشحن"
-          value={mockStats.shipped}
+          value={stats.shipped || 0}
           icon={Truck}
           color="primary"
           index={2}
         />
         <StatCard
           title="الإيرادات"
-          value={formatCurrency(mockStats.revenue)}
+          value={formatCurrency(stats.revenue || 0)}
           icon={CheckCircle}
           color="success"
           trend="+12% عن الشهر الماضي"
@@ -271,10 +420,19 @@ export default function OrdersPage() {
         </div>
       </div>
 
+      {/* Error State */}
+      {error && (
+        <div className="p-4 bg-error-100 text-error-600 rounded-lg mb-4 flex items-center gap-2">
+          <AlertCircle className="h-5 w-5" />
+          {error}
+          <button onClick={refetch} className="mr-auto text-sm underline">إعادة المحاولة</button>
+        </div>
+      )}
+
       {/* Orders Table */}
-      {isLoading ? (
+      {loading ? (
         <SkeletonTable rows={5} columns={6} />
-      ) : filteredOrders.length === 0 ? (
+      ) : orders.length === 0 ? (
         <EmptyState
           preset={searchQuery || statusFilter !== 'all' ? 'search' : 'orders'}
           action={
@@ -288,7 +446,15 @@ export default function OrdersPage() {
               >
                 مسح الفلاتر
               </button>
-            ) : undefined
+            ) : (
+              <button
+                onClick={() => setShowModal(true)}
+                className="ds-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg"
+              >
+                <Plus className="h-4 w-4" />
+                إضافة طلب جديد
+              </button>
+            )
           }
         />
       ) : (
@@ -300,7 +466,6 @@ export default function OrdersPage() {
                   <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">رقم الطلب</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">العميل</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">المدينة</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">المنتجات</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">المبلغ</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">الحالة</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">التاريخ</th>
@@ -308,55 +473,51 @@ export default function OrdersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((order, index) => (
+                {orders.map((order, index) => (
                   <tr
                     key={order.id}
                     className={cn(
                       'border-b border-border last:border-0',
-                      // Motion: smooth hover transition
                       'transition-colors duration-[var(--motion-duration-fast)]',
                       'hover:bg-muted/30',
                       index % 2 === 0 ? 'bg-background' : 'bg-muted/10',
-                      // Stagger animation for rows
-                      'animate-fade-in-up',
-                      `[animation-delay:${index * 30}ms]`
+                      'animate-fade-in-up'
                     )}
                     style={{ animationDelay: `${index * 30}ms` }}
                   >
                     <td className="px-4 py-3">
-                      <span className="text-sm font-medium text-primary">{order.id}</span>
+                      <span className="font-mono text-sm">{order.order_number}</span>
                     </td>
                     <td className="px-4 py-3">
                       <div>
-                        <p className="text-sm font-medium">{order.customerName}</p>
-                        <p className="text-xs text-muted-foreground" dir="ltr">{order.customerPhone}</p>
+                        <p className="font-medium text-sm">{order.customer_name}</p>
+                        <p className="text-xs text-muted-foreground">{order.customer_phone}</p>
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-sm">{order.city}</td>
                     <td className="px-4 py-3">
-                      <span className="text-sm">{order.city}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm">{order.items} منتج</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-medium">{formatCurrency(order.total)}</span>
+                      <span className="font-semibold text-sm">{formatCurrency(order.total_amount)}</span>
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={order.status} />
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</span>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {formatDate(order.created_at)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        <button
-                          className="p-1.5 rounded-md transition-all duration-[var(--motion-duration-fast)] hover:bg-muted active:scale-95"
+                        <button 
+                          className="p-1.5 hover:bg-muted rounded-md transition-colors"
                           title="عرض التفاصيل"
                         >
                           <Eye className="h-4 w-4 text-muted-foreground" />
                         </button>
-                        <button
-                          className="p-1.5 rounded-md transition-all duration-[var(--motion-duration-fast)] hover:bg-muted active:scale-95"
+                        <button 
+                          onClick={() => {
+                            setEditingOrder(order);
+                            setShowModal(true);
+                          }}
+                          className="p-1.5 hover:bg-muted rounded-md transition-colors"
                           title="المزيد"
                         >
                           <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
@@ -368,22 +529,19 @@ export default function OrdersPage() {
               </tbody>
             </table>
           </div>
-          
-          {/* Pagination */}
-          <div className="px-4 py-3 border-t border-border bg-muted/30 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              عرض {filteredOrders.length} من {mockOrders.length} طلب
-            </p>
-            <div className="flex items-center gap-2">
-              <button className="px-3 py-1.5 text-sm border border-border rounded-md transition-all duration-[var(--motion-duration-fast)] hover:bg-muted active:scale-95 disabled:opacity-50" disabled>
-                السابق
-              </button>
-              <button className="px-3 py-1.5 text-sm border border-border rounded-md transition-all duration-[var(--motion-duration-fast)] hover:bg-muted active:scale-95 disabled:opacity-50" disabled>
-                التالي
-              </button>
-            </div>
-          </div>
         </div>
+      )}
+
+      {/* Order Modal */}
+      {showModal && (
+        <OrderModal
+          order={editingOrder}
+          onClose={() => {
+            setShowModal(false);
+            setEditingOrder(null);
+          }}
+          onSave={refetch}
+        />
       )}
     </AppShell>
   );

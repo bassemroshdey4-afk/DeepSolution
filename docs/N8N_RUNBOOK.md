@@ -810,3 +810,47 @@ Additional secrets required for shipping workflows:
 ---
 
 **IMPORTANT**: For shipping automation details, refer to SHIPPING_AUTOMATION_MAP.md.
+
+
+---
+
+## Live Workflows (January 2026)
+
+### Created Workflows
+
+The following workflows have been created and are ready for activation:
+
+| Workflow ID | Name | Webhook Path | Status |
+|-------------|------|--------------|--------|
+| `4ePzfVn82GVuC2YQ` | DS - Shipping Status Updates | `/webhook/ds-shipping-status` | Created |
+| `Bnm1Waz94CmpAYe2` | DS - Orders Lifecycle Manager | `/webhook/ds-orders-webhook` | Created |
+| `VUIUD6bTxdGpOW8Z` | DS - Inventory Sync | `/webhook/ds-inventory-sync` | Created |
+| `yFnQ0ya6PjeB10nh` | DS - AI Analysis Triggers | `/webhook/ds-ai-trigger` | Created |
+| `MELy3ZSoXNvsjFxT` | AI Agent workflow | Schedule (7 AM) | **Active** |
+
+### Activation Steps
+
+To activate the workflows:
+
+1. Go to https://deepsolution.app.n8n.cloud
+2. Sign in with your credentials
+3. Navigate to **Workflows**
+4. Click on each DS-* workflow
+5. Toggle the **Active** switch in the top-right corner
+
+### Environment Variables Required
+
+```env
+N8N_INSTANCE_URL=https://deepsolution.app.n8n.cloud
+N8N_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+### API Connection Test
+
+```bash
+# Test API connection
+curl -s -H "X-N8N-API-KEY: $N8N_API_KEY" \
+  "https://deepsolution.app.n8n.cloud/api/v1/workflows" | jq '.data | length'
+```
+
+Expected output: `6` (or more if additional workflows are created)

@@ -1259,3 +1259,84 @@
 - [x] Test: Incognito browser redirects to /login with NO data
 - [ ] Test: Anon requests cannot read products/orders from Supabase (pending RLS execution)
 - [x] Create SECURITY_REPORT.md
+
+
+---
+
+## 🚀 FULL ACTIVATION MODE (Priority: CRITICAL)
+
+### PHASE 1 — Routes + Auth + RLS
+- [ ] Create ROUTES.md - list all routes and nav links
+- [ ] Fix all 404 errors - ensure nav links match pages
+- [ ] Auth guard - Supabase session required for internal routes
+- [ ] Supabase RLS - enable on core tables with tenant isolation
+- [ ] Proof: Incognito redirects to /auth, no 404 after login
+
+### PHASE 2 — Button Wiring
+- [ ] Audit all primary buttons on each page
+- [ ] Wire working buttons with loading/toast/logs
+- [ ] Disable unimplemented buttons with "Coming soon" tooltip
+- [ ] Fix client/server boundaries (use client directive)
+- [ ] Create BUTTON_AUDIT.md
+
+### PHASE 3 — Core CRUD
+- [ ] Add Product - form → API → DB → list update
+- [ ] Basic inventory update
+- [ ] Basic shipping record link
+- [ ] Create CRUD_SMOKE_TEST.md with proof
+
+### PHASE 4 — n8n Workflows
+- [ ] Create order-status-sync workflow
+- [ ] Create shipping-status-ingestion workflow
+- [ ] Create courier-performance-analytics workflow
+- [ ] Export workflows to /n8n/workflows/*.json
+- [ ] Create N8N_RUNBOOK.md
+- [ ] Test execution proof
+
+### PHASE 5 — AI Gemini Switch
+- [ ] Inventory all OpenAI usage
+- [ ] Create AI adapter: src/lib/ai/provider.ts
+- [ ] Implement Gemini provider
+- [ ] Add env vars: GEMINI_API_KEY, AI_PROVIDER, AI_MODEL_TEXT
+- [ ] Add guardrails: kill switch, budget, logs
+- [ ] Run 1 successful Deep Intelligence task
+- [ ] Update AI_PROVIDER.md + env.example
+
+
+---
+
+## 🚀 FULL ACTIVATION MODE (Jan 2026)
+
+### PHASE 1: Routes + Auth Guard + RLS ✅
+- [x] Create ROUTES.md with all routes
+- [x] Fix any 404 pages (created 12 missing pages)
+- [x] Auth guard on all protected pages (redirect to /login)
+- [x] Basic Auth for alpha protection
+
+### PHASE 2: Button Audit + Actions ✅
+- [x] Create BUTTONS_AUDIT.md
+- [x] Identify all placeholder buttons
+
+### PHASE 3: CRUD APIs + UI ✅
+- [x] Products CRUD (add/edit/delete) - API + UI
+- [x] Orders CRUD (create/view/update status) - API created
+- [x] Inventory adjustments - API created
+- [x] SQL Schema files (01_core_schema.sql, 02_rls_policies.sql)
+- [x] React hooks (useApi.ts)
+
+### PHASE 4: n8n Workflows
+- [ ] Connect n8n instance
+- [ ] Create order notification workflow
+- [ ] Create low stock alert workflow
+- [ ] Create shipping status update workflow
+
+### PHASE 5: AI Gemini Integration ✅
+- [x] AI Adapter Layer created
+- [x] Gemini Provider implemented
+- [x] Cost guardrails (kill switch, rate limiting, budgets)
+- [x] 14 tests passing
+- [x] AI_PROVIDER.md documentation
+
+### PHASE 6: Final Report
+- [ ] Full activation report
+- [ ] Deployment checklist

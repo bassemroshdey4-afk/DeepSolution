@@ -50,7 +50,7 @@ const features = [
 ];
 
 export default function HomePage() {
-  const { user, isLoading, loginUrl } = useAuth();
+  const { user, isLoading, isAuthenticated } = useAuth();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted">
@@ -67,7 +67,7 @@ export default function HomePage() {
           <nav className="flex items-center gap-4">
             {isLoading ? (
               <div className="w-24 h-10 bg-muted animate-pulse rounded-lg" />
-            ) : user ? (
+            ) : isAuthenticated ? (
               <Link
                 href="/dashboard"
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
@@ -76,13 +76,13 @@ export default function HomePage() {
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             ) : (
-              <a
-                href={loginUrl}
+              <Link
+                href="/login"
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
               >
                 <span>تسجيل الدخول</span>
                 <ArrowLeft className="h-4 w-4" />
-              </a>
+              </Link>
             )}
           </nav>
         </div>
@@ -107,7 +107,7 @@ export default function HomePage() {
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          {user ? (
+          {isAuthenticated ? (
             <Link
               href="/dashboard"
               className="flex items-center gap-2 px-8 py-4 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors text-lg font-medium"
@@ -116,13 +116,13 @@ export default function HomePage() {
               <ArrowLeft className="h-5 w-5" />
             </Link>
           ) : (
-            <a
-              href={loginUrl}
+            <Link
+              href="/login"
               className="flex items-center gap-2 px-8 py-4 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors text-lg font-medium"
             >
               <span>ابدأ مجاناً</span>
               <ArrowLeft className="h-5 w-5" />
-            </a>
+            </Link>
           )}
           <Link
             href="#features"
