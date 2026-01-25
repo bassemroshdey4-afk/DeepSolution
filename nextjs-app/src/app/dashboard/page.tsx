@@ -204,8 +204,15 @@ function QuickActionCard({
 }
 
 export default function DashboardPage() {
-  const { user, isLoading: authLoading, logout } = useAuth();
+  const { user, isLoading: authLoading, isAuthenticated, logout } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+
+  // SECURITY: Redirect unauthenticated users to login
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      window.location.href = '/login?redirect=/dashboard';
+    }
+  }, [authLoading, isAuthenticated]);
 
   // Simulate loading state
   useEffect(() => {
@@ -233,7 +240,8 @@ export default function DashboardPage() {
     }).format(amount) + ' ر.س';
   };
 
-  if (authLoading) {
+  // SECURITY: Show loading while checking auth, or if not authenticated
+  if (authLoading || !isAuthenticated) {
     return (
       <AppShell
         breadcrumbs={[{ label: 'لوحة التحكم' }]}

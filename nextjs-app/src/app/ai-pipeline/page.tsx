@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
  * Features the premium "Thinking Experience" loading states.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppShell, PageHeader } from '@/components/layout';
 import { 
   DeepIntelligenceThinking, 
@@ -35,11 +35,18 @@ import {
 type PipelineStep = 'input' | 'analyzing' | 'results';
 
 export default function DeepIntelligencePage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [step, setStep] = useState<PipelineStep>('input');
   const [currentStage, setCurrentStage] = useState(0);
   const [productDescription, setProductDescription] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
+
+  // SECURITY: Redirect unauthenticated users to login
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      window.location.href = '/login?redirect=/ai-pipeline';
+    }
+  }, [authLoading, isAuthenticated]);
 
   // Simulate analysis process
   const handleAnalyze = async () => {
@@ -66,7 +73,8 @@ export default function DeepIntelligencePage() {
     setSelectedImage(null);
   };
 
-  if (authLoading) {
+  // SECURITY: Show loading while checking auth, or if not authenticated
+  if (authLoading || !isAuthenticated) {
     return (
       <AppShell>
         <div className="p-6">

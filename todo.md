@@ -1245,3 +1245,17 @@
 ### Phase 6: التوثيق
 - [x] docs/AI_PROVIDER.md
 - [x] env.example محدث
+
+
+---
+
+## 🚨 CRITICAL SECURITY FIX (Priority: HIGHEST)
+
+- [ ] Layer 1: Next.js Route Protection - redirect unauthenticated to /auth
+- [ ] Layer 2: Supabase RLS Hardening - enable RLS on all tables with tenant isolation
+- [ ] Layer 3: Vercel Protection - add Basic Auth or Vercel protection
+- [ ] Remove any fallback/demo data shown without auth
+- [ ] Add X-Robots-Tag noindex
+- [ ] Test: Incognito browser redirects to /auth with NO data
+- [ ] Test: Anon requests cannot read products/orders from Supabase
+- [ ] Create SECURITY_REPORT.md

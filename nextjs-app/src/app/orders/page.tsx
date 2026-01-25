@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
  * Arabic copy follows I18N_TONE_GUIDE.md
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppShell, EmptyState, SkeletonPage, SkeletonTable } from '@/components/layout';
 import { useAuth } from '@/contexts/AuthContext';
 // trpc removed - using mock data for now
@@ -51,67 +51,26 @@ const orderStatuses = {
 
 type OrderStatus = keyof typeof orderStatuses;
 
-// Mock data for demonstration
-const mockOrders = [
-  {
-    id: 'ORD-001',
-    customerName: 'أحمد محمد',
-    customerPhone: '0501234567',
-    total: 450.00,
-    status: 'pending' as OrderStatus,
-    items: 3,
-    createdAt: new Date('2024-12-20T10:30:00'),
-    city: 'الرياض',
-  },
-  {
-    id: 'ORD-002',
-    customerName: 'سارة علي',
-    customerPhone: '0559876543',
-    total: 1250.00,
-    status: 'shipped' as OrderStatus,
-    items: 5,
-    createdAt: new Date('2024-12-19T14:20:00'),
-    city: 'جدة',
-  },
-  {
-    id: 'ORD-003',
-    customerName: 'محمد خالد',
-    customerPhone: '0541112233',
-    total: 89.00,
-    status: 'delivered' as OrderStatus,
-    items: 1,
-    createdAt: new Date('2024-12-18T09:15:00'),
-    city: 'الدمام',
-  },
-  {
-    id: 'ORD-004',
-    customerName: 'فاطمة أحمد',
-    customerPhone: '0567778899',
-    total: 320.00,
-    status: 'processing' as OrderStatus,
-    items: 2,
-    createdAt: new Date('2024-12-20T08:45:00'),
-    city: 'مكة',
-  },
-  {
-    id: 'ORD-005',
-    customerName: 'عبدالله سعد',
-    customerPhone: '0533334444',
-    total: 175.00,
-    status: 'cancelled' as OrderStatus,
-    items: 1,
-    createdAt: new Date('2024-12-17T16:00:00'),
-    city: 'المدينة',
-  },
-];
+// SECURITY: No mock data - orders will be fetched from API after authentication
+// Empty array until real data is loaded from Supabase
+const mockOrders: Array<{
+  id: string;
+  customerName: string;
+  customerPhone: string;
+  total: number;
+  status: OrderStatus;
+  items: number;
+  createdAt: Date;
+  city: string;
+}> = [];
 
-// Stats data
+// SECURITY: No mock stats - will be fetched from API after authentication
 const mockStats = {
-  total: 156,
-  pending: 23,
-  shipped: 45,
-  delivered: 78,
-  revenue: 45680,
+  total: 0,
+  pending: 0,
+  shipped: 0,
+  delivered: 0,
+  revenue: 0,
 };
 
 function StatusBadge({ status }: { status: OrderStatus }) {
@@ -175,10 +134,17 @@ function StatCard({
 }
 
 export default function OrdersPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [isLoading, setIsLoading] = useState(false);
+
+  // SECURITY: Redirect unauthenticated users to login
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      window.location.href = '/login?redirect=/orders';
+    }
+  }, [authLoading, isAuthenticated]);
 
   // Filter orders
   const filteredOrders = mockOrders.filter(order => {
@@ -208,7 +174,8 @@ export default function OrdersPage() {
     }).format(date);
   };
 
-  if (authLoading) {
+  // SECURITY: Show loading while checking auth, or if not authenticated
+  if (authLoading || !isAuthenticated) {
     return (
       <AppShell
         breadcrumbs={[{ label: 'الطلبات' }]}
