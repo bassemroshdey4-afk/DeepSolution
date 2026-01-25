@@ -1,14 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Create Supabase client only if env vars are available
+function getSupabaseClient(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!url || !key) {
+    return null;
+  }
+  
+  return createClient(url, key);
+}
 
 // GET /api/shipping - List shipments
 export async function GET(request: NextRequest) {
   try {
+    const supabase = getSupabaseClient();
+    
+    if (!supabase) {
+      // Return empty data if Supabase is not configured
+      return NextResponse.json({
+        data: [],
+        stats: { total: 0, pending: 0, in_transit: 0, delivered: 0 },
+        pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+        message: 'Database not configured'
+      });
+    }
+
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -45,22 +64,20 @@ export async function GET(request: NextRequest) {
     }
 
     // Get stats
-    const { data: statsData } = await supabase
+    const { data: allShipments } = await supabase
       .from('shipments')
-      .select('status')
-      .then(result => {
-        const stats = {
-          total: result.data?.length || 0,
-          pending: result.data?.filter(s => s.status === 'pending').length || 0,
-          in_transit: result.data?.filter(s => s.status === 'in_transit').length || 0,
-          delivered: result.data?.filter(s => s.status === 'delivered').length || 0,
-        };
-        return { data: stats };
-      });
+      .select('status');
+    
+    const stats = {
+      total: allShipments?.length || 0,
+      pending: allShipments?.filter(s => s.status === 'pending').length || 0,
+      in_transit: allShipments?.filter(s => s.status === 'in_transit').length || 0,
+      delivered: allShipments?.filter(s => s.status === 'delivered').length || 0,
+    };
 
     return NextResponse.json({
       data: data || [],
-      stats: statsData || { total: 0, pending: 0, in_transit: 0, delivered: 0 },
+      stats,
       pagination: {
         page,
         limit,
@@ -80,6 +97,15 @@ export async function GET(request: NextRequest) {
 // POST /api/shipping - Create shipment
 export async function POST(request: NextRequest) {
   try {
+    const supabase = getSupabaseClient();
+    
+    if (!supabase) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 503 }
+      );
+    }
+
     const body = await request.json();
     const { order_id, carrier, tracking_number, estimated_delivery, shipping_cost, notes } = body;
 
