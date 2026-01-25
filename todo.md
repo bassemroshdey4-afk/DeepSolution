@@ -1210,3 +1210,38 @@
 ---
 
 **ملاحظة:** لتفعيل التحليل الحقيقي بالذكاء الاصطناعي، يجب إضافة `OPENAI_API_KEY` في Vercel Environment Variables.
+
+
+---
+
+## AI Provider Migration: OpenAI → Gemini ✅
+### Phase 1: جرد استخدامات AI الحالية
+- [x] البحث عن جميع استدعاءات OpenAI/invokeLLM
+- [x] توثيق كل ملف واستخدامه (7 ملفات)
+
+### Phase 2: إنشاء AI Adapter Layer
+- [x] إنشاء server/lib/ai/types.ts
+- [x] إنشاء server/lib/ai/config.ts
+- [x] إنشاء server/lib/ai/provider.ts
+- [x] إنشاء server/lib/ai/index.ts
+
+### Phase 3: تنفيذ Gemini Provider
+- [x] إنشاء server/lib/ai/gemini-provider.ts
+- [x] تحديث server/_core/llm.ts للتوافق العكسي
+- [x] إضافة retry مع exponential backoff
+
+### Phase 4: حواجز الأمان والتكلفة
+- [x] kill switch (ENABLE_AI_CALLS)
+- [x] per-run token budget (AI_MAX_TOKENS_PER_RUN)
+- [x] per-run cost budget (AI_MAX_COST_PER_RUN)
+- [x] rate limiting (user/tenant/global)
+- [x] usage logging لكل استدعاء
+- [x] تحديث nextjs-app/src/lib/ai-protection.ts
+
+### Phase 5: الاختبارات والتحقق
+- [x] 14 اختبار Vitest ناجح
+- [x] pnpm check يمر بنجاح (0 أخطاء TypeScript)
+
+### Phase 6: التوثيق
+- [x] docs/AI_PROVIDER.md
+- [x] env.example محدث

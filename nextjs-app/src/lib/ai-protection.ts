@@ -1,43 +1,58 @@
 /**
  * AI Usage Protection System
  * Rate limiting, cost tracking, and kill-switch for AI API calls
+ * 
+ * Updated for Gemini provider with cost-efficient pricing
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { checkFlag, FLAGS } from './feature-flags';
 
-// Token pricing (per 1K tokens) - GPT-4 Turbo pricing
+// Token pricing (per 1M tokens) - Gemini pricing (much cheaper than OpenAI)
 const TOKEN_PRICING = {
-  'gpt-4-turbo': { input: 0.01, output: 0.03 },
-  'gpt-4': { input: 0.03, output: 0.06 },
-  'gpt-3.5-turbo': { input: 0.0005, output: 0.0015 },
-  'default': { input: 0.01, output: 0.03 },
+  // Gemini models
+  'gemini-2.0-flash': { input: 0.10, output: 0.40 },
+  'gemini-2.0-flash-lite': { input: 0.075, output: 0.30 },
+  'gemini-1.5-flash': { input: 0.075, output: 0.30 },
+  'gemini-1.5-flash-8b': { input: 0.0375, output: 0.15 },
+  'gemini-1.5-pro': { input: 1.25, output: 5.00 },
+  'gemini-2.5-flash': { input: 0.15, output: 0.60 },
+  
+  // OpenAI models (legacy, for reference)
+  'gpt-4-turbo': { input: 10.00, output: 30.00 },
+  'gpt-4': { input: 30.00, output: 60.00 },
+  'gpt-4o': { input: 2.50, output: 10.00 },
+  'gpt-4o-mini': { input: 0.15, output: 0.60 },
+  'gpt-3.5-turbo': { input: 0.50, output: 1.50 },
+  
+  // Default (use Gemini Flash pricing)
+  'default': { input: 0.10, output: 0.40 },
 };
 
-// Rate limits
+// Rate limits (more generous due to lower Gemini costs)
 const RATE_LIMITS = {
   // Per-user limits (per hour)
   user: {
-    maxRequests: 100,
-    maxTokens: 500000,
-    maxCostUsd: 10,
+    maxRequests: 200,
+    maxTokens: 1000000,
+    maxCostUsd: 5, // Lower cost limit due to cheaper pricing
   },
   // Per-tenant limits (per hour)
   tenant: {
-    maxRequests: 500,
-    maxTokens: 2000000,
-    maxCostUsd: 50,
+    maxRequests: 1000,
+    maxTokens: 5000000,
+    maxCostUsd: 25,
   },
   // Global limits (per hour)
   global: {
-    maxRequests: 5000,
-    maxTokens: 10000000,
-    maxCostUsd: 500,
+    maxRequests: 10000,
+    maxTokens: 50000000,
+    maxCostUsd: 250,
   },
   // Per-run limits
   perRun: {
     maxTokens: 100000,
-    maxCostUsd: 5,
+    maxCostUsd: 2, // Lower per-run limit
   },
 };
 
@@ -50,10 +65,12 @@ export interface AIUsageLog {
   user_id?: string;
   feature_key: string;
   model: string;
+  provider: string;
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+  latency_ms?: number;
   run_status: 'pending' | 'completed' | 'failed' | 'rate_limited' | 'killed';
   error_message?: string;
   metadata?: Record<string, unknown>;
@@ -64,6 +81,7 @@ export interface AIProtectionContext {
   tenantId?: string;
   featureKey: string;
   model?: string;
+  provider?: string;
   estimatedTokens?: number;
 }
 
@@ -80,6 +98,7 @@ function getSupabaseClient() {
 
 /**
  * Calculate estimated cost for tokens
+ * Pricing is per 1M tokens
  */
 export function calculateCost(
   model: string,
@@ -87,8 +106,8 @@ export function calculateCost(
   completionTokens: number
 ): number {
   const pricing = TOKEN_PRICING[model as keyof typeof TOKEN_PRICING] || TOKEN_PRICING.default;
-  const inputCost = (promptTokens / 1000) * pricing.input;
-  const outputCost = (completionTokens / 1000) * pricing.output;
+  const inputCost = (promptTokens / 1000000) * pricing.input;
+  const outputCost = (completionTokens / 1000000) * pricing.output;
   return Number((inputCost + outputCost).toFixed(6));
 }
 
@@ -244,10 +263,12 @@ export async function logAIUsage(log: AIUsageLog): Promise<string | null> {
       user_id: log.user_id,
       feature_key: log.feature_key,
       model: log.model,
+      provider: log.provider || 'gemini',
       prompt_tokens: log.prompt_tokens,
       completion_tokens: log.completion_tokens,
       total_tokens: log.total_tokens,
       estimated_cost_usd: log.estimated_cost_usd,
+      latency_ms: log.latency_ms,
       run_status: log.run_status,
       error_message: log.error_message,
       metadata: log.metadata || {},
@@ -274,10 +295,11 @@ export async function getAIUsageStats(
   totalTokens: number;
   totalCost: number;
   byFeature: Record<string, { requests: number; tokens: number; cost: number }>;
+  byProvider: Record<string, { requests: number; tokens: number; cost: number }>;
 }> {
   const supabase = getSupabaseClient();
   if (!supabase) {
-    return { totalRequests: 0, totalTokens: 0, totalCost: 0, byFeature: {} };
+    return { totalRequests: 0, totalTokens: 0, totalCost: 0, byFeature: {}, byProvider: {} };
   }
   
   const periodMap = {
@@ -289,7 +311,7 @@ export async function getAIUsageStats(
   
   let query = supabase
     .from('ai_usage_logs')
-    .select('feature_key, total_tokens, estimated_cost_usd')
+    .select('feature_key, provider, total_tokens, estimated_cost_usd')
     .gte('created_at', `now() - interval '${periodMap[period]}'`);
   
   if (context.userId) {
@@ -302,10 +324,11 @@ export async function getAIUsageStats(
   const { data, error } = await query;
   
   if (error || !data) {
-    return { totalRequests: 0, totalTokens: 0, totalCost: 0, byFeature: {} };
+    return { totalRequests: 0, totalTokens: 0, totalCost: 0, byFeature: {}, byProvider: {} };
   }
   
   const byFeature: Record<string, { requests: number; tokens: number; cost: number }> = {};
+  const byProvider: Record<string, { requests: number; tokens: number; cost: number }> = {};
   let totalRequests = 0;
   let totalTokens = 0;
   let totalCost = 0;
@@ -315,15 +338,31 @@ export async function getAIUsageStats(
     totalTokens += log.total_tokens || 0;
     totalCost += log.estimated_cost_usd || 0;
     
+    // By feature
     if (!byFeature[log.feature_key]) {
       byFeature[log.feature_key] = { requests: 0, tokens: 0, cost: 0 };
     }
     byFeature[log.feature_key].requests++;
     byFeature[log.feature_key].tokens += log.total_tokens || 0;
     byFeature[log.feature_key].cost += log.estimated_cost_usd || 0;
+    
+    // By provider
+    const provider = log.provider || 'unknown';
+    if (!byProvider[provider]) {
+      byProvider[provider] = { requests: 0, tokens: 0, cost: 0 };
+    }
+    byProvider[provider].requests++;
+    byProvider[provider].tokens += log.total_tokens || 0;
+    byProvider[provider].cost += log.estimated_cost_usd || 0;
   }
   
-  return { totalRequests, totalTokens, totalCost: Number(totalCost.toFixed(4)), byFeature };
+  return { 
+    totalRequests, 
+    totalTokens, 
+    totalCost: Number(totalCost.toFixed(4)), 
+    byFeature,
+    byProvider
+  };
 }
 
 /**
@@ -333,6 +372,8 @@ export async function protectedAICall<T>(
   context: AIProtectionContext,
   aiFunction: () => Promise<{ result: T; promptTokens: number; completionTokens: number }>
 ): Promise<{ success: boolean; result?: T; error?: string; logId?: string }> {
+  const startTime = Date.now();
+  
   // Check rate limits
   const rateLimitCheck = await checkRateLimits(context);
   if (!rateLimitCheck.allowed) {
@@ -341,10 +382,12 @@ export async function protectedAICall<T>(
       user_id: context.userId,
       feature_key: context.featureKey,
       model: context.model || 'unknown',
+      provider: context.provider || 'gemini',
       prompt_tokens: 0,
       completion_tokens: 0,
       total_tokens: 0,
       estimated_cost_usd: 0,
+      latency_ms: Date.now() - startTime,
       run_status: 'rate_limited',
       error_message: rateLimitCheck.reason,
     });
@@ -356,6 +399,7 @@ export async function protectedAICall<T>(
     const { result, promptTokens, completionTokens } = await aiFunction();
     const totalTokens = promptTokens + completionTokens;
     const cost = calculateCost(context.model || 'default', promptTokens, completionTokens);
+    const latencyMs = Date.now() - startTime;
     
     // Update rate limits
     updateRateLimits(context, totalTokens, cost);
@@ -365,31 +409,51 @@ export async function protectedAICall<T>(
       tenant_id: context.tenantId,
       user_id: context.userId,
       feature_key: context.featureKey,
-      model: context.model || 'gpt-4-turbo',
+      model: context.model || 'gemini-2.0-flash',
+      provider: context.provider || 'gemini',
       prompt_tokens: promptTokens,
       completion_tokens: completionTokens,
       total_tokens: totalTokens,
       estimated_cost_usd: cost,
+      latency_ms: latencyMs,
       run_status: 'completed',
     });
     
     return { success: true, result, logId: logId || undefined };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const latencyMs = Date.now() - startTime;
     
     await logAIUsage({
       tenant_id: context.tenantId,
       user_id: context.userId,
       feature_key: context.featureKey,
       model: context.model || 'unknown',
+      provider: context.provider || 'gemini',
       prompt_tokens: 0,
       completion_tokens: 0,
       total_tokens: 0,
       estimated_cost_usd: 0,
+      latency_ms: latencyMs,
       run_status: 'failed',
       error_message: errorMessage,
     });
     
     return { success: false, error: errorMessage };
   }
+}
+
+/**
+ * Get current AI provider info
+ */
+export function getAIProviderInfo(): {
+  provider: string;
+  model: string;
+  pricing: { input: number; output: number };
+} {
+  const model = process.env.AI_MODEL_TEXT || 'gemini-2.0-flash';
+  const provider = process.env.AI_PROVIDER || 'gemini';
+  const pricing = TOKEN_PRICING[model as keyof typeof TOKEN_PRICING] || TOKEN_PRICING.default;
+  
+  return { provider, model, pricing };
 }
