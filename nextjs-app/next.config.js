@@ -3,16 +3,6 @@ const nextConfig = {
   // Enable React Strict Mode
   reactStrictMode: true,
   
-  // Proxy API requests to existing Express backend
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:3000/api/:path*',
-      },
-    ];
-  },
-  
   // SECURITY: Add security headers globally
   async headers() {
     return [
@@ -73,13 +63,14 @@ const nextConfig = {
   outputFileTracingRoot: __dirname,
   
   // Expose environment variables to the client
+  // NOTE: No Manus OAuth references - only Supabase Auth
   env: {
-    NEXT_PUBLIC_APP_ID: process.env.VITE_APP_ID,
-    NEXT_PUBLIC_OAUTH_PORTAL_URL: process.env.VITE_OAUTH_PORTAL_URL,
-    NEXT_PUBLIC_APP_TITLE: process.env.VITE_APP_TITLE,
+    NEXT_PUBLIC_APP_TITLE: process.env.VITE_APP_TITLE || 'DeepSolution',
     NEXT_PUBLIC_APP_LOGO: process.env.VITE_APP_LOGO,
     NEXT_PUBLIC_SUPABASE_URL: process.env.SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+    NEXT_PUBLIC_AUTH_PROVIDER: 'supabase', // HARD-CODED: Only Supabase Auth allowed
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || 'https://deepsolution.vercel.app',
   },
 };
 

@@ -1,5 +1,7 @@
 'use client';
 
+// FORCE VERCEL REDEPLOY - Auth routing fix - 2026-01-25T12:50:00Z
+
 // Force dynamic rendering to prevent prerendering errors with useContext
 export const dynamic = 'force-dynamic';
 
