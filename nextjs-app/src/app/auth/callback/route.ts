@@ -2,7 +2,9 @@
  * Supabase OAuth Callback Handler
  * 
  * This route handles the OAuth callback from Supabase after Google login.
- * It exchanges the authorization code for a session and redirects to dashboard.
+ * It exchanges the authorization code for a session and determines redirect:
+ * - New users (no tenant) → /onboarding
+ * - Existing users (has tenant) → /dashboard
  * 
  * Flow:
  * 1. User clicks "Login with Google" on /login
@@ -10,7 +12,8 @@
  * 3. Google redirects back to Supabase
  * 4. Supabase redirects to this callback with ?code=...
  * 5. We exchange the code for a session
- * 6. Redirect to /dashboard (or error page)
+ * 6. Check if user has a tenant
+ * 7. Redirect to /onboarding or /dashboard
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -20,7 +23,6 @@ import { cookies } from 'next/headers';
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/dashboard';
   const error = searchParams.get('error');
   const errorDescription = searchParams.get('error_description');
 
@@ -82,15 +84,46 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${siteUrl}/login?error=exchange_error&message=${encodeURIComponent(exchangeError.message)}`);
     }
 
-    if (!data.session) {
+    if (!data.session || !data.user) {
       console.error('[Auth Callback] No session returned');
       return NextResponse.redirect(`${siteUrl}/login?error=no_session`);
     }
 
-    console.log('[Auth Callback] Success! User:', data.user?.email);
+    const user = data.user;
+    console.log('[Auth Callback] Success! User:', user.email);
 
-    // Redirect to the intended destination
-    return NextResponse.redirect(`${siteUrl}${next}`);
+    // Check if user has a profile with a default tenant
+    let redirectTo = '/dashboard';
+    
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, default_tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) {
+        // Profile doesn't exist yet - trigger should create it
+        // But we still need to redirect to onboarding
+        console.log('[Auth Callback] Profile error (may not exist yet):', profileError.message);
+        redirectTo = '/onboarding';
+      } else if (!profile || !profile.default_tenant_id) {
+        // Profile exists but no tenant assigned
+        console.log('[Auth Callback] No tenant assigned, redirecting to onboarding');
+        redirectTo = '/onboarding';
+      } else {
+        // User has a tenant, go to dashboard
+        console.log('[Auth Callback] User has tenant:', profile.default_tenant_id);
+        redirectTo = '/dashboard';
+      }
+    } catch (profileCheckError) {
+      // If profiles table doesn't exist yet, redirect to onboarding
+      console.log('[Auth Callback] Profile check failed, redirecting to onboarding');
+      redirectTo = '/onboarding';
+    }
+
+    // Redirect to the determined destination
+    return NextResponse.redirect(`${siteUrl}${redirectTo}`);
 
   } catch (err) {
     console.error('[Auth Callback] Unexpected error:', err);

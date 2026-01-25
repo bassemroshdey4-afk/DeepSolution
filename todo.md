@@ -1340,3 +1340,35 @@
 ### PHASE 6: Final Report
 - [ ] Full activation report
 - [ ] Deployment checklist
+
+
+---
+
+## 🏢 Multi-Tenant Auth System - Supabase Only (Jan 25, 2026)
+
+### Phase 1: DB Schema
+- [ ] Create tenants table (id, name, domain, settings, created_at)
+- [ ] Create profiles table with tenant_id FK
+- [ ] Create tenant_users junction table (tenant_id, user_id, role)
+- [ ] Add tenant_id to all entity tables
+- [ ] Enable RLS on all tables with tenant isolation
+
+### Phase 2: Auth Flow
+- [ ] First Google login → create profile + tenant + assign OWNER
+- [ ] Returning user → load existing tenant
+- [ ] Redirect: new user → /onboarding, existing → /dashboard
+
+### Phase 3: Data Isolation
+- [ ] Add tenant_id middleware/context
+- [ ] Update all API queries to filter by tenant_id
+- [ ] RLS policies for tenant isolation
+
+### Phase 4: UX
+- [ ] Create /onboarding page
+- [ ] Arabic error messages
+- [ ] No blank pages
+
+### Phase 5: Documentation
+- [ ] Auth flow diagram
+- [ ] Verification checklist
+- [ ] Google OAuth branding notes (DeepSolution name + logo)
