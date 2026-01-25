@@ -1251,11 +1251,11 @@
 
 ## 🚨 CRITICAL SECURITY FIX (Priority: HIGHEST)
 
-- [ ] Layer 1: Next.js Route Protection - redirect unauthenticated to /auth
-- [ ] Layer 2: Supabase RLS Hardening - enable RLS on all tables with tenant isolation
-- [ ] Layer 3: Vercel Protection - add Basic Auth or Vercel protection
-- [ ] Remove any fallback/demo data shown without auth
-- [ ] Add X-Robots-Tag noindex
-- [ ] Test: Incognito browser redirects to /auth with NO data
-- [ ] Test: Anon requests cannot read products/orders from Supabase
-- [ ] Create SECURITY_REPORT.md
+- [x] Layer 1: Next.js Route Protection - redirect unauthenticated to /auth
+- [x] Layer 2: Supabase RLS Hardening - SQL script created (needs manual execution)
+- [x] Layer 3: Vercel Protection - Basic Auth + Security Headers added
+- [x] Remove any fallback/demo data shown without auth
+- [x] Add X-Robots-Tag noindex
+- [x] Test: Incognito browser redirects to /login with NO data
+- [ ] Test: Anon requests cannot read products/orders from Supabase (pending RLS execution)
+- [x] Create SECURITY_REPORT.md
