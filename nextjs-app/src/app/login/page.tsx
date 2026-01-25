@@ -12,6 +12,9 @@ export const dynamic = 'force-dynamic';
  * - Clean, professional design
  * - RTL support
  * - Comprehensive error handling
+ * 
+ * IMPORTANT: No automatic redirects that could break OAuth flow.
+ * The only redirect happens AFTER successful authentication check.
  */
 
 import { useState, useEffect, Suspense } from 'react';
@@ -19,8 +22,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@supabase/supabase-js';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
 
-// Site URL for OAuth redirects
+// Site URL for OAuth redirects - MUST be Vercel domain only
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://deepsolution.vercel.app';
 
 // Create Supabase client for auth (with fallback for missing env)
@@ -33,10 +37,11 @@ const supabase = supabaseUrl && supabaseAnonKey
 // Error messages in Arabic
 const ERROR_MESSAGES: Record<string, string> = {
   oauth_error: 'حدث خطأ أثناء المصادقة مع Google. يرجى المحاولة مرة أخرى.',
-  no_code: 'لم يتم استلام رمز المصادقة. يرجى المحاولة مرة أخرى.',
+  no_code: 'لم يتم استلام رمز المصادقة. تأكد من إعدادات Supabase URL Configuration.',
   config_error: 'خطأ في إعدادات المصادقة. يرجى التواصل مع الدعم الفني.',
   exchange_error: 'فشل في تبادل رمز المصادقة. يرجى المحاولة مرة أخرى.',
   no_session: 'لم يتم إنشاء جلسة. يرجى المحاولة مرة أخرى.',
+  auth_failed: 'فشل في تسجيل الدخول. يرجى المحاولة مرة أخرى.',
   unexpected_error: 'حدث خطأ غير متوقع. يرجى المحاولة لاحقاً.',
   auth_callback_error: 'حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.',
   config: 'خطأ في إعدادات المصادقة. يرجى التواصل مع الدعم الفني.',
@@ -48,15 +53,21 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
 
   const redirectTo = searchParams.get('redirect') || '/dashboard';
   const authError = searchParams.get('error');
   const errorMessage = searchParams.get('message');
 
-  // Redirect if already authenticated
+  // Only redirect if already authenticated - AFTER auth check is complete
+  // This prevents breaking the OAuth flow
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      router.push(redirectTo);
+    if (!authLoading) {
+      setHasCheckedAuth(true);
+      if (isAuthenticated) {
+        // User is already logged in, redirect to dashboard
+        router.push(redirectTo);
+      }
     }
   }, [isAuthenticated, authLoading, router, redirectTo]);
 
@@ -69,6 +80,7 @@ function LoginContent() {
     }
   }, [authError, errorMessage]);
 
+  // Handle Google OAuth login - ONLY triggered by button click
   const handleGoogleLogin = async () => {
     if (!supabase) {
       setError('نظام المصادقة غير مُعد. يرجى التواصل مع الدعم الفني.');
@@ -79,10 +91,12 @@ function LoginContent() {
     setError(null);
 
     try {
-      // Use the correct callback URL: /auth/callback (not /api/auth/callback)
+      // Callback URL MUST match what's configured in Supabase Dashboard
       const callbackUrl = `${SITE_URL}/auth/callback`;
       
-      console.log('[Login] Starting OAuth with callback:', callbackUrl);
+      console.log('[Login] Starting Google OAuth');
+      console.log('[Login] Site URL:', SITE_URL);
+      console.log('[Login] Callback URL:', callbackUrl);
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -98,23 +112,40 @@ function LoginContent() {
       if (error) {
         throw error;
       }
-    } catch (err: any) {
+      
+      // If no error, the browser will be redirected to Google
+      // Don't set isLoading to false here
+    } catch (err: unknown) {
       console.error('[Login] OAuth error:', err);
-      setError(err?.message || 'حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.');
+      const errorMsg = err instanceof Error ? err.message : 'حدث خطأ أثناء تسجيل الدخول.';
+      setError(errorMsg);
       setIsLoading(false);
     }
   };
 
   const clearError = () => {
     setError(null);
-    // Clear URL params
+    // Clear URL params without causing a full page reload
     router.replace('/login');
   };
 
-  if (authLoading) {
+  // Show loading while checking auth status
+  if (authLoading || !hasCheckedAuth) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // If authenticated, show loading while redirecting
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">جاري التحويل...</p>
+        </div>
       </div>
     );
   }
@@ -226,9 +257,9 @@ function LoginContent() {
 
             <p className="text-center text-sm text-muted-foreground mt-6">
               بالمتابعة، أنت توافق على{' '}
-              <a href="#" className="text-primary hover:underline">شروط الاستخدام</a>
+              <Link href="/terms" className="text-primary hover:underline">شروط الاستخدام</Link>
               {' '}و{' '}
-              <a href="#" className="text-primary hover:underline">سياسة الخصوصية</a>
+              <Link href="/privacy" className="text-primary hover:underline">سياسة الخصوصية</Link>
             </p>
           </div>
 
