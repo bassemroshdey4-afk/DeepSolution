@@ -11,14 +11,17 @@ export const dynamic = 'force-dynamic';
  * - Full logo display
  * - Clean, professional design
  * - RTL support
+ * - Comprehensive error handling
  */
 
 import { useState, useEffect, Suspense } from 'react';
-import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@supabase/supabase-js';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
+
+// Site URL for OAuth redirects
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://deepsolution.vercel.app';
 
 // Create Supabase client for auth (with fallback for missing env)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -26,6 +29,18 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = supabaseUrl && supabaseAnonKey 
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
+
+// Error messages in Arabic
+const ERROR_MESSAGES: Record<string, string> = {
+  oauth_error: 'حدث خطأ أثناء المصادقة مع Google. يرجى المحاولة مرة أخرى.',
+  no_code: 'لم يتم استلام رمز المصادقة. يرجى المحاولة مرة أخرى.',
+  config_error: 'خطأ في إعدادات المصادقة. يرجى التواصل مع الدعم الفني.',
+  exchange_error: 'فشل في تبادل رمز المصادقة. يرجى المحاولة مرة أخرى.',
+  no_session: 'لم يتم إنشاء جلسة. يرجى المحاولة مرة أخرى.',
+  unexpected_error: 'حدث خطأ غير متوقع. يرجى المحاولة لاحقاً.',
+  auth_callback_error: 'حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.',
+  config: 'خطأ في إعدادات المصادقة. يرجى التواصل مع الدعم الفني.',
+};
 
 function LoginContent() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -36,6 +51,7 @@ function LoginContent() {
 
   const redirectTo = searchParams.get('redirect') || '/dashboard';
   const authError = searchParams.get('error');
+  const errorMessage = searchParams.get('message');
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -46,12 +62,12 @@ function LoginContent() {
 
   // Show auth error from callback
   useEffect(() => {
-    if (authError === 'auth_callback_error') {
-      setError('حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.');
-    } else if (authError === 'config') {
-      setError('خطأ في إعدادات المصادقة. يرجى التواصل مع الدعم الفني.');
+    if (authError) {
+      const message = ERROR_MESSAGES[authError] || 
+        (errorMessage ? decodeURIComponent(errorMessage) : 'حدث خطأ غير معروف.');
+      setError(message);
     }
-  }, [authError]);
+  }, [authError, errorMessage]);
 
   const handleGoogleLogin = async () => {
     if (!supabase) {
@@ -63,10 +79,15 @@ function LoginContent() {
     setError(null);
 
     try {
+      // Use the correct callback URL: /auth/callback (not /api/auth/callback)
+      const callbackUrl = `${SITE_URL}/auth/callback`;
+      
+      console.log('[Login] Starting OAuth with callback:', callbackUrl);
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(redirectTo)}`,
+          redirectTo: callbackUrl,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -77,11 +98,17 @@ function LoginContent() {
       if (error) {
         throw error;
       }
-    } catch (err) {
-      console.error('Login error:', err);
-      setError('حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.');
+    } catch (err: any) {
+      console.error('[Login] OAuth error:', err);
+      setError(err?.message || 'حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.');
       setIsLoading(false);
     }
+  };
+
+  const clearError = () => {
+    setError(null);
+    // Clear URL params
+    router.replace('/login');
   };
 
   if (authLoading) {
@@ -135,9 +162,20 @@ function LoginContent() {
 
             {/* Error Message */}
             {error && (
-              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-center gap-3 text-red-700 dark:text-red-400">
-                <AlertCircle className="h-5 w-5 flex-shrink-0" />
-                <p className="text-sm">{error}</p>
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+                    <button
+                      onClick={clearError}
+                      className="mt-2 text-xs text-red-600 dark:text-red-300 hover:underline flex items-center gap-1"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      حاول مرة أخرى
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -175,9 +213,15 @@ function LoginContent() {
             </button>
 
             {!supabase && (
-              <p className="text-center text-xs text-amber-600 mt-3">
-                ⚠️ نظام المصادقة يحتاج إعداد. تواصل مع الدعم الفني.
-              </p>
+              <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <p className="text-center text-xs text-amber-700 dark:text-amber-400">
+                  ⚠️ نظام المصادقة يحتاج إعداد متغيرات البيئة:
+                </p>
+                <ul className="mt-2 text-xs text-amber-600 dark:text-amber-500 list-disc list-inside">
+                  <li>NEXT_PUBLIC_SUPABASE_URL</li>
+                  <li>NEXT_PUBLIC_SUPABASE_ANON_KEY</li>
+                </ul>
+              </div>
             )}
 
             <p className="text-center text-sm text-muted-foreground mt-6">
