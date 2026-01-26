@@ -13,8 +13,10 @@ export const dynamic = 'force-dynamic';
  * - RTL support
  * - Comprehensive error handling
  * 
- * IMPORTANT: No automatic redirects that could break OAuth flow.
- * The only redirect happens AFTER successful authentication check.
+ * IMPORTANT: 
+ * - No automatic redirects that could break OAuth flow
+ * - redirectTo MUST NOT have trailing slash
+ * - Works on both production and preview domains
  */
 
 import { useState, useEffect, Suspense } from 'react';
@@ -24,8 +26,24 @@ import { createClient } from '@supabase/supabase-js';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 
-// Site URL for OAuth redirects - MUST be Vercel domain only
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://deepsolution.vercel.app';
+/**
+ * Get the correct site URL for OAuth redirects
+ * Handles production, preview, and local environments
+ */
+function getSiteUrl(): string {
+  // Check for explicit env variable first
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, ''); // Remove trailing slash
+  }
+  
+  // In browser, use current origin
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  
+  // Fallback to production URL
+  return 'https://deepsolution.vercel.app';
+}
 
 // Create Supabase client for auth (with fallback for missing env)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -60,12 +78,10 @@ function LoginContent() {
   const errorMessage = searchParams.get('message');
 
   // Only redirect if already authenticated - AFTER auth check is complete
-  // This prevents breaking the OAuth flow
   useEffect(() => {
     if (!authLoading) {
       setHasCheckedAuth(true);
       if (isAuthenticated) {
-        // User is already logged in, redirect to dashboard
         router.push(redirectTo);
       }
     }
@@ -91,14 +107,17 @@ function LoginContent() {
     setError(null);
 
     try {
+      const siteUrl = getSiteUrl();
       // Callback URL MUST match what's configured in Supabase Dashboard
-      const callbackUrl = `${SITE_URL}/auth/callback`;
+      // MUST NOT have trailing slash
+      const callbackUrl = `${siteUrl}/auth/callback`;
       
-      console.log('[Login] Starting Google OAuth');
-      console.log('[Login] Site URL:', SITE_URL);
+      console.log('[Login] ====== Starting Google OAuth ======');
+      console.log('[Login] Site URL:', siteUrl);
       console.log('[Login] Callback URL:', callbackUrl);
+      console.log('[Login] Supabase URL:', supabaseUrl);
       
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: callbackUrl,
@@ -109,12 +128,19 @@ function LoginContent() {
         },
       });
 
+      console.log('[Login] OAuth response:', { url: data?.url ? 'received' : 'none', error: error?.message });
+
       if (error) {
         throw error;
       }
       
-      // If no error, the browser will be redirected to Google
-      // Don't set isLoading to false here
+      // If we have a URL, the redirect should happen automatically
+      // But just in case, we can manually redirect
+      if (data?.url) {
+        console.log('[Login] Redirecting to OAuth provider...');
+        window.location.href = data.url;
+      }
+      
     } catch (err: unknown) {
       console.error('[Login] OAuth error:', err);
       const errorMsg = err instanceof Error ? err.message : 'حدث خطأ أثناء تسجيل الدخول.';
@@ -125,7 +151,6 @@ function LoginContent() {
 
   const clearError = () => {
     setError(null);
-    // Clear URL params without causing a full page reload
     router.replace('/login');
   };
 
