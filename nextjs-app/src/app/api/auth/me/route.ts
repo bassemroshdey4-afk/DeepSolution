@@ -1,21 +1,59 @@
+/**
+ * Auth Me API Route
+ * 
+ * Returns current user info from Supabase session
+ * Creates user profile if not exists
+ */
+
 import { NextResponse } from 'next/server';
-import { createSupabaseServerClient, createSupabaseAdminClient } from '@/lib/supabase-server';
+import { createSupabaseServerClient, createSupabaseAdminClient, isSupabaseConfigured } from '@/lib/supabase-server';
 
 export async function GET() {
   try {
+    // Check if Supabase is configured
+    const { configured, missing } = isSupabaseConfigured();
+    if (!configured) {
+      console.error('[Auth Me] Supabase not configured. Missing:', missing.join(', '));
+      return NextResponse.json(
+        { error: 'Supabase not configured', missing },
+        { status: 500 }
+      );
+    }
+
     const supabase = await createSupabaseServerClient();
     
     // Get current session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
-    if (sessionError || !session) {
+    if (sessionError) {
+      console.error('[Auth Me] Session error:', sessionError.message);
+      return NextResponse.json(null, { status: 401 });
+    }
+    
+    if (!session) {
+      // No session - user not logged in
       return NextResponse.json(null, { status: 401 });
     }
 
     const user = session.user;
     
     // Get user profile from our users table
-    const adminClient = createSupabaseAdminClient();
+    let adminClient;
+    try {
+      adminClient = createSupabaseAdminClient();
+    } catch (err) {
+      // If admin client fails, return basic user info
+      console.warn('[Auth Me] Admin client not available:', err);
+      return NextResponse.json({
+        id: user.id,
+        openId: user.id,
+        name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+        email: user.email,
+        avatarUrl: user.user_metadata?.avatar_url,
+        role: 'user',
+      });
+    }
+
     const { data: profile } = await adminClient
       .from('users')
       .select('*, tenants(name, slug)')
@@ -37,7 +75,7 @@ export async function GET() {
         .single();
 
       if (createError) {
-        console.error('Error creating user profile:', createError);
+        console.error('[Auth Me] Error creating user profile:', createError);
       }
 
       return NextResponse.json({
@@ -62,7 +100,11 @@ export async function GET() {
       tenantSlug: profile.tenants?.slug,
     });
   } catch (error) {
-    console.error('Auth me error:', error);
-    return NextResponse.json(null, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[Auth Me] Error:', errorMessage);
+    return NextResponse.json(
+      { error: errorMessage },
+      { status: 500 }
+    );
   }
 }

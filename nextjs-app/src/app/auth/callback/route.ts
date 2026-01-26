@@ -11,6 +11,32 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
+// Get Supabase URL with fallback
+function getSupabaseUrl(): string | null {
+  return process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || null;
+}
+
+// Get Supabase Anon Key with fallback
+function getSupabaseAnonKey(): string | null {
+  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || null;
+}
+
+// Get Site URL with fallback
+function getSiteUrl(): string {
+  // Check for explicit env variable first
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
+  }
+  
+  // Check Vercel URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  
+  // Fallback to production URL
+  return 'https://deepsolution.vercel.app';
+}
+
 export async function GET(request: NextRequest) {
   // Get the full URL and all params
   const requestUrl = new URL(request.url);
@@ -19,7 +45,7 @@ export async function GET(request: NextRequest) {
   const errorDescription = requestUrl.searchParams.get('error_description');
 
   // Site URL for redirects
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://deepsolution.vercel.app').replace(/\/$/, '');
+  const siteUrl = getSiteUrl();
 
   // ============================================================
   // DEBUG LOGGING
@@ -42,7 +68,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // If no code, redirect to login with debug info
+  // If no code, show detailed debug info
   if (!code) {
     console.error('[CALLBACK ROUTE] NO CODE RECEIVED!');
     console.error('[CALLBACK ROUTE] This means Supabase did not send the code');
@@ -50,22 +76,35 @@ export async function GET(request: NextRequest) {
     console.error('[CALLBACK ROUTE] - Site URL should be:', siteUrl);
     console.error('[CALLBACK ROUTE] - Redirect URL should include:', `${siteUrl}/auth/callback`);
     
+    // Check if this might be an implicit flow (hash-based)
+    // Note: Hash is not available server-side, so we redirect to a client page
+    console.error('[CALLBACK ROUTE] Possible causes:');
+    console.error('[CALLBACK ROUTE] 1. Supabase URL Configuration is wrong');
+    console.error('[CALLBACK ROUTE] 2. Supabase is using Implicit flow (hash) instead of PKCE');
+    console.error('[CALLBACK ROUTE] 3. Middleware is stripping query params');
+    
     return NextResponse.redirect(
-      `${siteUrl}/login?error=no_code&debug=route_handler_no_code`
+      `${siteUrl}/login?error=no_code&debug=no_code_in_callback`
     );
   }
 
   // Validate Supabase config
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = getSupabaseUrl();
+  const supabaseAnonKey = getSupabaseAnonKey();
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('[CALLBACK ROUTE] Missing Supabase environment variables!');
-    return NextResponse.redirect(`${siteUrl}/login?error=config_error`);
+  if (!supabaseUrl) {
+    console.error('[CALLBACK ROUTE] Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL!');
+    return NextResponse.redirect(`${siteUrl}/login?error=config_error&missing=supabase_url`);
+  }
+
+  if (!supabaseAnonKey) {
+    console.error('[CALLBACK ROUTE] Missing NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY!');
+    return NextResponse.redirect(`${siteUrl}/login?error=config_error&missing=supabase_key`);
   }
 
   try {
     console.log('[CALLBACK ROUTE] Creating Supabase client...');
+    console.log('[CALLBACK ROUTE] Supabase URL:', supabaseUrl.substring(0, 30) + '...');
     
     const cookieStore = await cookies();
 
@@ -97,6 +136,7 @@ export async function GET(request: NextRequest) {
 
     if (exchangeError) {
       console.error('[CALLBACK ROUTE] Exchange FAILED:', exchangeError.message);
+      console.error('[CALLBACK ROUTE] Error code:', exchangeError.status);
       return NextResponse.redirect(
         `${siteUrl}/login?error=auth_failed&message=${encodeURIComponent(exchangeError.message)}`
       );
@@ -110,6 +150,7 @@ export async function GET(request: NextRequest) {
     console.log('[CALLBACK ROUTE] ✅ SUCCESS!');
     console.log('[CALLBACK ROUTE] User ID:', data.user.id);
     console.log('[CALLBACK ROUTE] User Email:', data.user.email);
+    console.log('[CALLBACK ROUTE] Session expires:', data.session.expires_at);
     console.log('[CALLBACK ROUTE] Redirecting to /dashboard...');
 
     // Redirect to dashboard
