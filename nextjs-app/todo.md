@@ -19,9 +19,9 @@
 - [x] Push to GitHub and deploy
 
 ## OAuth Root Fix - Jan 26, 2026 (Debug shows no code/no hash)
-- [ ] Add detailed logging in middleware to trace where code gets lost
-- [ ] Fix middleware to return NextResponse.next() immediately for /auth/callback
-- [ ] Create separate route.ts for PKCE and page.tsx for Hash fallback
-- [ ] Review login page redirectTo
-- [ ] Build and push to GitHub
-- [ ] Test on Vercel and verify code reaches callback
+- [x] Add detailed logging in middleware to trace where code gets lost
+- [x] Fix middleware to return NextResponse.next() immediately for /auth/callback
+- [x] Create route.ts for PKCE (server-side handling)
+- [x] Review login page redirectTo - OK
+- [x] Build and push to GitHub
+- [ ] Test on Vercel and verify code reaches callback (USER ACTION)
