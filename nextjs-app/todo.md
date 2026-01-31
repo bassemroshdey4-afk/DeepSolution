@@ -85,3 +85,30 @@
 ### PHASE F: اختبار نهائي
 - [x] Build ناجح
 - [x] دفع إلى GitHub
+
+## OAuth Root Fix - Implicit to PKCE - Jan 26, 2026
+---
+**المشكلة:** Supabase يرجع `#access_token` (Implicit) بينما الكود ينتظر `?code=` (PKCE)
+
+### Phase 1: البحث عن استخدام مباشر لـ /auth/v1/authorize
+- [x] البحث في الكود عن أي href ثابت لـ Supabase OAuth - لا يوجد
+- [x] إزالة أي استخدام مباشر - غير مطلوب
+
+### Phase 2: إصلاح signInWithOAuth
+- [x] التأكد من استخدام supabase-js v2 مع PKCE - v2.89.0 مثبت
+- [x] signInWithOAuth يستخدم redirectTo صحيح
+
+### Phase 3: إنشاء callback page.tsx
+- [x] إنشاء Client Component لقراءة hash - page.tsx
+- [x] دعم كلا الـ flows (PKCE و Implicit)
+
+### Phase 4: مراجعة middleware
+- [x] التأكد من استثناء /auth/callback - موجود وصحيح
+
+### Phase 5: إصلاح ENV variables
+- [x] توحيد أسماء المتغيرات - موحدة مع fallback
+- [x] إصلاح supabaseKey is required - معالجة أخطاء واضحة
+
+### Phase 6: Build ودفع
+- [x] Build ناجح ✅
+- [ ] دفع إلى GitHub
