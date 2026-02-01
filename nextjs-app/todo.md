@@ -125,3 +125,43 @@
 
 ### Phase 3: التسليم
 - [x] تسليم اللوجو والدليل للمستخدم
+
+## OAuth Final Root Fix - Feb 1, 2026
+---
+**المشكلة:** Supabase لا يرسل code أو hash للـ callback
+
+### Phase 1: تشخيص
+- [ ] مراجعة signInWithOAuth و redirectTo في login page
+- [ ] التحقق من NEXT_PUBLIC_SITE_URL
+
+### Phase 2: إصلاح
+- [ ] إصلاح login page لاستخدام URL صحيح
+- [ ] التأكد من عدم وجود redirect خاطئ
+
+### Phase 3: توثيق
+- [ ] إنشاء دليل إعدادات Supabase المطلوبة
+
+### Phase 4: نشر
+- [ ] Build ودفع إلى GitHub
+
+## OAuth ROOT FIX - Feb 1, 2026 (FINAL)
+---
+**المشكلة:** implicit flow + ENV errors + middleware issues
+
+### Phase A: Supabase Client PKCE
+- [x] إضافة flowType: 'pkce' في supabase.ts
+- [x] إضافة detectSessionInUrl: true
+
+### Phase B: Callback Client Component
+- [x] إصلاح callback/page.tsx لدعم كلا الـ flows
+- [x] إضافة logs واضحة
+
+### Phase C: Middleware Fix
+- [x] استثناء /auth/* من أي redirect
+
+### Phase D: ENV Fix
+- [x] إصلاح supabase-server.ts لاستخدام الأسماء الصحيحة - موجود مع fallback
+
+### Phase E: Deploy
+- [ ] Build محلي
+- [ ] Push إلى GitHub

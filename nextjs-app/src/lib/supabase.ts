@@ -1,33 +1,72 @@
 /**
  * Supabase Client Configuration
  * 
- * Provides both browser and server clients for Supabase
- * with proper authentication handling
+ * CRITICAL: Uses PKCE flow for OAuth (not implicit)
+ * This ensures code is sent via query string, not hash
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { createBrowserClient, createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-// Environment variables
+// Environment variables with fallbacks
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+// Check if Supabase is configured
+export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
 
 /**
  * Browser client for client-side operations
- * Uses anon key with RLS
+ * Uses PKCE flow for OAuth
  */
-export function createBrowserSupabaseClient() {
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+export function createBrowserSupabaseClient(): SupabaseClient {
+  if (!isSupabaseConfigured) {
+    console.warn('[Supabase] Not configured - missing URL or ANON_KEY');
+  }
+  
+  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      flowType: 'pkce',
+      detectSessionInUrl: true,
+      autoRefreshToken: true,
+      persistSession: true,
+    },
+  });
+}
+
+/**
+ * Simple browser client (for login page)
+ * Uses PKCE flow
+ */
+export function getSupabaseClient(): SupabaseClient | null {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+  
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      flowType: 'pkce',
+      detectSessionInUrl: true,
+      autoRefreshToken: true,
+      persistSession: true,
+    },
+  });
 }
 
 /**
  * Server client for API routes
  * Uses service key to bypass RLS when needed
  */
-export function createServerSupabaseClient() {
-  return createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey);
+export function createServerSupabaseClient(): SupabaseClient {
+  const key = supabaseServiceKey || supabaseAnonKey;
+  return createClient(supabaseUrl, key, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
 
 /**
@@ -38,6 +77,9 @@ export async function createSSRSupabaseClient() {
   const cookieStore = await cookies();
   
   return createServerClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      flowType: 'pkce',
+    },
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -59,12 +101,17 @@ export async function createSSRSupabaseClient() {
  * Admin client for server-side operations
  * Bypasses RLS - use with caution
  */
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+export const supabaseAdmin = isSupabaseConfigured 
+  ? createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
+  : null;
+
+// Export URL and key for direct use where needed
+export { supabaseUrl, supabaseAnonKey };
 
 // Database types (will be generated from Supabase)
 export interface Database {
