@@ -403,3 +403,25 @@ Login → Onboarding (إذا لم يكتمل) → Setup (إذا لم يكتمل)
 - [x] Build ناجح ✅
 - [x] اختبار Dashboard مع بيانات مختلفة
 
+
+
+## Legacy Users Hard Redirect - Feb 2026
+
+### Phase 1: Middleware Analysis
+- [ ] قراءة Middleware الحالي
+- [ ] تحديد نقاط التعديل
+
+### Phase 2: Hard Redirect Implementation
+- [x] إزالة أي Defaults أو Backfill - STRICT CHECK only true
+- [x] Middleware يحكم المسار بالكامل
+- [x] profiles.onboarding_completed != true → /onboarding
+- [x] tenant_setup.setup_completed != true → /setup
+- [x] إضافة Logging واضح [MW-JOURNEY] JSON format
+
+### Phase 3: API Protection
+- [x] حماية /api/dashboard بنفس المنطق - STRICT CHECK + Logging
+- [x] إرجاع 403 مع redirect hint إذا لم يكتمل الـ Journey
+
+### Phase 4: Testing
+- [x] Build ناجح ✅
+- [x] اختبار Flow كامل

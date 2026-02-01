@@ -1,8 +1,13 @@
 /**
- * Next.js Middleware - OAuth Root Fix v2
+ * Next.js Middleware - Legacy Users Hard Redirect v3
  * 
- * CRITICAL: /auth/* paths MUST pass through completely untouched
- * No redirects, no rewrites, no modifications whatsoever
+ * CRITICAL RULES:
+ * 1. Middleware is the SOLE authority for user routing after login
+ * 2. NO defaults, NO backfill - DB values only
+ * 3. profiles.onboarding_completed != true → /onboarding (mandatory)
+ * 4. tenant_setup.setup_completed != true → /setup (after onboarding)
+ * 5. Dashboard access ONLY after both are completed
+ * 6. Clear logging for every redirect decision
  */
 
 import { NextResponse } from 'next/server';
@@ -47,6 +52,7 @@ const PASSTHROUGH_PATHS = [
   '/api/health',  // Health check
   '/api/webhook', // Webhooks
   '/api/setup',   // Setup API routes
+  '/api/onboarding', // Onboarding API routes
 ];
 
 function isProtectedPath(pathname: string): boolean {
@@ -87,6 +93,22 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
     "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://www.googleapis.com; frame-src https://accounts.google.com;"
   );
   return response;
+}
+
+/**
+ * Log user journey decision with all relevant data
+ */
+function logJourneyDecision(data: {
+  user_id: string | null;
+  onboarding_completed: boolean | null;
+  setup_completed: boolean | null;
+  redirect_target: string;
+  reason: string;
+}) {
+  console.log('[MW-JOURNEY]', JSON.stringify({
+    timestamp: new Date().toISOString(),
+    ...data
+  }));
 }
 
 export async function middleware(request: NextRequest) {
@@ -139,7 +161,13 @@ export async function middleware(request: NextRequest) {
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     
     if (!supabaseUrl || !supabaseAnonKey) {
-      console.log('[MW] Supabase not configured, redirecting to login');
+      logJourneyDecision({
+        user_id: null,
+        onboarding_completed: null,
+        setup_completed: null,
+        redirect_target: '/login',
+        reason: 'Supabase not configured'
+      });
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
       loginUrl.searchParams.set('error', 'config');
@@ -167,42 +195,62 @@ export async function middleware(request: NextRequest) {
     const { data: { session }, error } = await supabase.auth.getSession();
     
     if (error || !session) {
-      console.log('[MW] No session, redirecting to login');
+      logJourneyDecision({
+        user_id: null,
+        onboarding_completed: null,
+        setup_completed: null,
+        redirect_target: '/login',
+        reason: 'No session'
+      });
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(loginUrl);
     }
     
-    // Check onboarding status - redirect to /onboarding if not completed
-    // Skip this check if already on /onboarding page
+    const userId = session.user.id;
+    
+    // ============================================================
+    // STEP 1: CHECK ONBOARDING STATUS (MANDATORY - NO DEFAULTS)
+    // If onboarding_completed is NOT explicitly true → /onboarding
+    // ============================================================
+    
+    // Fetch profile - NO DEFAULTS, NO BACKFILL
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('onboarding_completed')
+      .eq('id', userId)
+      .single();
+    
+    // Determine onboarding status - STRICT CHECK
+    // Only true if explicitly set to true in DB
+    const onboardingCompleted = profile?.onboarding_completed === true;
+    
+    // If NOT on onboarding page and onboarding NOT completed → redirect to /onboarding
     if (pathname !== '/onboarding' && !pathname.startsWith('/onboarding/')) {
-      try {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('onboarding_completed')
-          .eq('id', session.user.id)
-          .single();
-        
-        if (profile && profile.onboarding_completed === false) {
-          console.log('[MW] Onboarding not completed, redirecting to /onboarding');
-          return NextResponse.redirect(new URL('/onboarding', request.url));
-        }
-      } catch (e) {
-        // If profiles table doesn't exist or error, skip onboarding check
-        console.log('[MW] Onboarding check skipped:', e);
+      if (!onboardingCompleted) {
+        logJourneyDecision({
+          user_id: userId,
+          onboarding_completed: profile?.onboarding_completed ?? null,
+          setup_completed: null,
+          redirect_target: '/onboarding',
+          reason: profileError 
+            ? `Profile error: ${profileError.message}` 
+            : profile 
+              ? 'onboarding_completed is not true' 
+              : 'No profile found'
+        });
+        return NextResponse.redirect(new URL('/onboarding', request.url));
       }
     }
     
-    // Check setup status - redirect to /setup if onboarding completed but setup not
-    // Skip this check if already on /setup or /onboarding page
-    if (pathname !== '/setup' && !pathname.startsWith('/setup/') && 
-        pathname !== '/onboarding' && !pathname.startsWith('/onboarding/')) {
-      try {
-        // Get user's tenant
+    // If ON onboarding page and onboarding IS completed → redirect to setup or dashboard
+    if (pathname === '/onboarding' || pathname.startsWith('/onboarding/')) {
+      if (onboardingCompleted) {
+        // Check setup status to determine where to redirect
         const { data: tenantUser } = await supabase
           .from('tenant_users')
           .select('tenant_id')
-          .eq('user_id', session.user.id)
+          .eq('user_id', userId)
           .single();
         
         if (tenantUser?.tenant_id) {
@@ -212,17 +260,126 @@ export async function middleware(request: NextRequest) {
             .eq('tenant_id', tenantUser.tenant_id)
             .single();
           
-          // If setup record exists and not completed, redirect to setup
-          if (setup && setup.setup_completed === false) {
-            console.log('[MW] Setup not completed, redirecting to /setup');
+          const setupCompleted = setup?.setup_completed === true;
+          
+          if (setupCompleted) {
+            logJourneyDecision({
+              user_id: userId,
+              onboarding_completed: true,
+              setup_completed: true,
+              redirect_target: '/dashboard',
+              reason: 'Onboarding and Setup both completed, redirecting from /onboarding'
+            });
+            return NextResponse.redirect(new URL('/dashboard', request.url));
+          } else {
+            logJourneyDecision({
+              user_id: userId,
+              onboarding_completed: true,
+              setup_completed: setup?.setup_completed ?? null,
+              redirect_target: '/setup',
+              reason: 'Onboarding completed, Setup not completed, redirecting from /onboarding'
+            });
             return NextResponse.redirect(new URL('/setup', request.url));
           }
         }
-      } catch (e) {
-        // If tenant_setup table doesn't exist or error, skip setup check
-        console.log('[MW] Setup check skipped:', e);
+        // No tenant yet - stay on onboarding to create one
       }
+      // Not completed - allow access to onboarding
+      return addSecurityHeaders(response);
     }
+    
+    // ============================================================
+    // STEP 2: CHECK SETUP STATUS (ONLY IF ONBOARDING COMPLETED)
+    // If setup_completed is NOT explicitly true → /setup
+    // ============================================================
+    
+    // Skip setup check if on /setup page
+    if (pathname === '/setup' || pathname.startsWith('/setup/')) {
+      // If setup completed, redirect to dashboard
+      const { data: tenantUser } = await supabase
+        .from('tenant_users')
+        .select('tenant_id')
+        .eq('user_id', userId)
+        .single();
+      
+      if (tenantUser?.tenant_id) {
+        const { data: setup } = await supabase
+          .from('tenant_setup')
+          .select('setup_completed')
+          .eq('tenant_id', tenantUser.tenant_id)
+          .single();
+        
+        if (setup?.setup_completed === true) {
+          logJourneyDecision({
+            user_id: userId,
+            onboarding_completed: true,
+            setup_completed: true,
+            redirect_target: '/dashboard',
+            reason: 'Setup completed, redirecting from /setup'
+          });
+          return NextResponse.redirect(new URL('/dashboard', request.url));
+        }
+      }
+      // Not completed - allow access to setup
+      return addSecurityHeaders(response);
+    }
+    
+    // For all other protected paths (dashboard, orders, etc.)
+    // Check setup status
+    const { data: tenantUser, error: tenantError } = await supabase
+      .from('tenant_users')
+      .select('tenant_id')
+      .eq('user_id', userId)
+      .single();
+    
+    if (!tenantUser?.tenant_id) {
+      // No tenant - redirect to onboarding to create one
+      logJourneyDecision({
+        user_id: userId,
+        onboarding_completed: onboardingCompleted,
+        setup_completed: null,
+        redirect_target: '/onboarding',
+        reason: tenantError 
+          ? `Tenant error: ${tenantError.message}` 
+          : 'No tenant found for user'
+      });
+      return NextResponse.redirect(new URL('/onboarding', request.url));
+    }
+    
+    const { data: setup, error: setupError } = await supabase
+      .from('tenant_setup')
+      .select('setup_completed')
+      .eq('tenant_id', tenantUser.tenant_id)
+      .single();
+    
+    // STRICT CHECK - Only true if explicitly set to true in DB
+    const setupCompleted = setup?.setup_completed === true;
+    
+    if (!setupCompleted) {
+      logJourneyDecision({
+        user_id: userId,
+        onboarding_completed: true,
+        setup_completed: setup?.setup_completed ?? null,
+        redirect_target: '/setup',
+        reason: setupError 
+          ? `Setup error: ${setupError.message}` 
+          : setup 
+            ? 'setup_completed is not true' 
+            : 'No setup record found'
+      });
+      return NextResponse.redirect(new URL('/setup', request.url));
+    }
+    
+    // ============================================================
+    // STEP 3: ALL CHECKS PASSED - ALLOW ACCESS
+    // ============================================================
+    logJourneyDecision({
+      user_id: userId,
+      onboarding_completed: true,
+      setup_completed: true,
+      redirect_target: pathname,
+      reason: 'All journey steps completed - access granted'
+    });
     
     return addSecurityHeaders(response);
   }
