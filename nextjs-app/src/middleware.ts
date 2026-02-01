@@ -18,6 +18,7 @@ const ENABLE_BASIC_AUTH = process.env.ENABLE_BASIC_AUTH === 'true';
 const PROTECTED_PATHS = [
   '/dashboard',
   '/onboarding',
+  '/setup',
   '/orders',
   '/products',
   '/inventory',
@@ -45,6 +46,7 @@ const PASSTHROUGH_PATHS = [
   '/terms',       // Terms of service
   '/api/health',  // Health check
   '/api/webhook', // Webhooks
+  '/api/setup',   // Setup API routes
 ];
 
 function isProtectedPath(pathname: string): boolean {
@@ -169,6 +171,57 @@ export async function middleware(request: NextRequest) {
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(loginUrl);
+    }
+    
+    // Check onboarding status - redirect to /onboarding if not completed
+    // Skip this check if already on /onboarding page
+    if (pathname !== '/onboarding' && !pathname.startsWith('/onboarding/')) {
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('onboarding_completed')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profile && profile.onboarding_completed === false) {
+          console.log('[MW] Onboarding not completed, redirecting to /onboarding');
+          return NextResponse.redirect(new URL('/onboarding', request.url));
+        }
+      } catch (e) {
+        // If profiles table doesn't exist or error, skip onboarding check
+        console.log('[MW] Onboarding check skipped:', e);
+      }
+    }
+    
+    // Check setup status - redirect to /setup if onboarding completed but setup not
+    // Skip this check if already on /setup or /onboarding page
+    if (pathname !== '/setup' && !pathname.startsWith('/setup/') && 
+        pathname !== '/onboarding' && !pathname.startsWith('/onboarding/')) {
+      try {
+        // Get user's tenant
+        const { data: tenantUser } = await supabase
+          .from('tenant_users')
+          .select('tenant_id')
+          .eq('user_id', session.user.id)
+          .single();
+        
+        if (tenantUser?.tenant_id) {
+          const { data: setup } = await supabase
+            .from('tenant_setup')
+            .select('setup_completed')
+            .eq('tenant_id', tenantUser.tenant_id)
+            .single();
+          
+          // If setup record exists and not completed, redirect to setup
+          if (setup && setup.setup_completed === false) {
+            console.log('[MW] Setup not completed, redirecting to /setup');
+            return NextResponse.redirect(new URL('/setup', request.url));
+          }
+        }
+      } catch (e) {
+        // If tenant_setup table doesn't exist or error, skip setup check
+        console.log('[MW] Setup check skipped:', e);
+      }
     }
     
     return addSecurityHeaders(response);

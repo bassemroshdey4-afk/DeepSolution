@@ -165,3 +165,84 @@
 ### Phase E: Deploy
 - [x] Build محلي ✅
 - [x] Push إلى GitHub ✅
+
+
+## Onboarding UX Wizard - Feb 1, 2026
+---
+**Goal:** بناء Wizard onboarding كامل (6 خطوات) مع framer-motion وحفظ تدريجي في Supabase
+
+### Phase 1: تحليل هيكل المشروع
+- [x] قراءة DB schema الحالي - tenants, tenant_users موجودين
+- [x] قراءة auth flow الحالي - middleware يحمي الصفحات
+- [x] تحديد الجداول المطلوبة - نحتاج tenant_onboarding جديد
+
+### Phase 2: DB + API
+- [x] إنشاء جدول tenant_onboarding - sql/02_onboarding_schema.sql
+- [x] إنشاء API route handlers لكل خطوة - /api/onboarding
+- [x] إضافة onboarding_completed field - في profiles
+
+### Phase 3: UI Steps
+- [x] Step 0: Language + Country
+- [x] Step 1: Company/Store name + slug + logo
+- [x] Step 2: Currency + Timezone + language
+- [x] Step 3: Monthly orders + plan recommendation
+- [x] Step 4: Industry + Sales channels
+- [x] Step 5: Basic ops (warehouse, COD, team)
+- [x] Step 6: Finish loading + redirect
+
+### Phase 4: Middleware Guard
+- [x] إضافة redirect logic لـ /onboarding - يتحقق من profiles.onboarding_completed
+
+### Phase 5: Polish
+- [x] framer-motion animations - موجودة في كل step
+- [x] Progress bar - موجود في page.tsx الرئيسي
+- [x] Empty states - موجودة
+- [x] Error messages - موجودة بالعربي
+
+### Phase 6: QA
+- [ ] Build ناجح
+- [ ] اختبار كل خطوة
+- [ ] اختبار استكمال من آخر خطوة
+
+
+## Core User Journey - Setup Wizard - Feb 1, 2026
+---
+**Goal:** بناء Setup Wizard متعدد المراحل لإعداد نظام الطلبات والمخازن وخدمة العملاء والـ AI Bots
+
+### Phase 1: تحليل المشروع
+- [x] قراءة DB schema الحالي - tenants, orders, products موجودين
+- [x] فهم هيكل الـ onboarding الموجود - tenant_onboarding موجود
+
+### Phase 2: DB Schema
+- [x] إنشاء جدول tenant_setup - مع كل حقول الإعداد
+- [x] order_sources - مدمج في tenant_setup كـ TEXT[]
+- [x] إنشاء جدول warehouses
+- [x] إنشاء جدول ai_bot_scenarios
+- [x] إنشاء جدول staff_members
+- [x] platforms_enabled - مدمج في tenant_setup كـ TEXT[]
+- [ ] تنفيذ الـ SQL في Supabase (بانتظار المستخدم)
+
+### Phase 3: API Routes
+- [x] إنشاء /api/setup route handlers
+- [x] إنشاء /api/setup/warehouses
+- [x] إنشاء /api/setup/staff
+- [x] إنشاء /api/setup/ai-bots
+
+### Phase 4: UI Steps
+- [x] Step 1: مصادر الطلبات (order_sources)
+- [x] Step 2: المخازن (warehouses)
+- [x] Step 3: خدمة العملاء (human/bot/hybrid)
+- [x] Step 4: AI Bots config (WhatsApp/Meta/Sales)
+- [x] Step 5: الموظفين والصلاحيات
+- [x] Step 6: المنصات المستخدمة
+- [x] Step 7: إنهاء وتوجيه للـ dashboard
+
+### Phase 5: Middleware Guard
+- [x] إضافة setup_completed check
+- [x] إضافة /setup للـ protected paths
+- [x] إضافة /api/setup للـ passthrough paths
+
+### Phase 6: QA
+- [x] Build ناجح ✅
+- [ ] اختبار كل خطوة (بعد تنفيذ SQL)
+
