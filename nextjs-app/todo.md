@@ -163,5 +163,5 @@
 - [x] إصلاح supabase-server.ts لاستخدام الأسماء الصحيحة - موجود مع fallback
 
 ### Phase E: Deploy
-- [ ] Build محلي
-- [ ] Push إلى GitHub
+- [x] Build محلي ✅
+- [x] Push إلى GitHub ✅
