@@ -278,3 +278,66 @@
 - [x] Build ناجح ✅
 - [x] تسليم النتائج النهائية
 
+
+
+## Mandatory Onboarding - Auth Flow Integration - Feb 1, 2026
+---
+**Goal:** ربط Setup Wizard بالـ Auth Flow - إجباري لكل مستخدم جديد وقديم
+
+### Phase 1: SQL Schema + Trigger + Migration
+- [ ] إنشاء جدول user_profiles مع onboarding_completed
+- [ ] إنشاء trigger لـ auto-create profile عند التسجيل
+- [ ] إنشاء migration script للمستخدمين القدامى
+- [ ] تفعيل RLS policies
+
+### Phase 2: Server-side Gate (Middleware)
+- [ ] تحديث middleware.ts للتحقق من onboarding_completed
+- [ ] جلب البيانات عبر @supabase/ssr
+- [ ] منع الوصول لـ /dashboard/** قبل الإنهاء
+- [ ] Redirect لـ /setup إذا لم يكتمل
+
+### Phase 3: Setup Wizard DB Integration
+- [ ] قراءة onboarding_step من DB
+- [ ] حفظ البيانات في DB عند كل Next
+- [ ] تحديث onboarding_completed = true عند Finish
+- [ ] إزالة الاعتماد على localStorage كـ source of truth
+
+### Phase 4: Testing
+- [ ] Test 1: مستخدم جديد → /setup
+- [ ] Test 2: مستخدم قديم → /setup
+- [ ] Test 3: بعد Finish → /dashboard
+- [ ] Test 4: محاولة /dashboard قبل الإنهاء → redirect
+
+
+
+## Mandatory Onboarding - Feb 1, 2026
+### Phase 1: DB Migration
+- [x] Add onboarding columns to profiles table:
+  - onboarding_completed (BOOLEAN DEFAULT FALSE)
+  - onboarding_step (INTEGER DEFAULT 0)
+  - company_name (TEXT)
+  - country (TEXT)
+  - language (TEXT)
+  - currency (TEXT)
+  - monthly_order_volume (TEXT)
+  - recommended_plan (TEXT)
+- [x] Execute SQL migration via Supabase SQL Editor
+- [x] Verify migration success
+
+### Phase 2: Auth Flow Update
+- [x] Update middleware.ts to check onboarding_completed from profiles
+- [x] Redirect to /onboarding if onboarding_completed = false
+- [x] Skip check for /onboarding page itself
+
+### Phase 3: Onboarding UI Update
+- [x] Update onboarding/page.tsx to save progress to DB
+- [x] Load saved progress on page load
+- [x] Multi-step wizard (4 steps)
+- [x] Save onboarding_step on each navigation
+- [x] Mark onboarding_completed = true on finish
+- [x] Redirect to /setup after completion
+
+### Phase 4: Build & Test
+- [x] Build successful ✅
+- [ ] Test new user flow (login → onboarding → setup → dashboard)
+- [ ] Test existing user flow (login → dashboard if onboarding_completed)
