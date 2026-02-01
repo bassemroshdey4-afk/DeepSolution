@@ -341,3 +341,38 @@
 - [x] Build successful ✅
 - [ ] Test new user flow (login → onboarding → setup → dashboard)
 - [ ] Test existing user flow (login → dashboard if onboarding_completed)
+
+
+## UX Journey v1 - COMPLETED ✅ - Feb 1, 2026
+---
+**الهدف:** تنفيذ UX Journey احترافية كاملة من أول تسجيل دخول
+
+### DB Schema ✅
+- [x] profiles table - أعمدة onboarding موجودة (onboarding_completed, onboarding_step, company_name, country, language, currency, monthly_order_volume, recommended_plan)
+- [x] tenant_setup table - تم إنشاؤه (setup_completed, current_step, website_option, order_sources, warehouse_count, support_mode, support_channels, employee_count, employee_roles)
+
+### Onboarding Wizard ✅
+- [x] 4 خطوات (مرحباً → معلومات النشاط → حجم الطلبات → الخطة المقترحة)
+- [x] يحفظ التقدم في profiles
+- [x] ينشئ Tenant عند الإنهاء
+- [x] يوجه لـ /setup بعد الإكمال
+
+### Setup Wizard ✅
+- [x] 7 خطوات مع animations (مصادر الطلبات → المخازن → خدمة العملاء → AI Bots → فريق العمل → المنصات → الانتهاء)
+- [x] يقرأ/يكتب من tenant_setup
+- [x] localStorage persistence للـ draft
+- [x] Chat Preview للـ AI Bots
+
+### Middleware Logic ✅
+- [x] التحقق من Session → /login
+- [x] التحقق من onboarding_completed → /onboarding
+- [x] التحقق من setup_completed → /setup
+
+### Build ✅
+- [x] Build ناجح
+
+### Flow الكامل:
+```
+Login → Onboarding (إذا لم يكتمل) → Setup (إذا لم يكتمل) → Dashboard
+```
+
