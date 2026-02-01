@@ -376,3 +376,30 @@
 Login → Onboarding (إذا لم يكتمل) → Setup (إذا لم يكتمل) → Dashboard
 ```
 
+
+
+## Smart Dashboard v1 - Feb 1, 2026
+---
+**Goal:** تحويل Dashboard إلى Adaptive Dashboard مبني على بيانات profiles و tenant_setup
+
+### Phase 1: تحليل وتحديد البيانات
+- [ ] قراءة Dashboard الحالي
+- [ ] تحديد البيانات المطلوبة من profiles و tenant_setup
+
+### Phase 2: API Route
+- [x] إنشاء /api/dashboard route لجلب البيانات المجمعة (profile, setup, stats, features, next_steps)
+
+### Phase 3: Adaptive Widgets
+- [x] إنشاء KPI widgets (طلبات، منتجات، إيرادات، مخزون منخفض)
+- [x] إنشاء Status widgets (خدمة العملاء، القنوات، المخازن)
+- [x] إنشاء Alerts (طلبات معلقة، مخزون منخفض)
+- [x] Sections تظهر/تختفي حسب support_mode و channels
+
+### Phase 4: Empty States & Next Steps
+- [x] Empty states ذكية للمستخدمين الجدد
+- [x] Next Steps cards مع priorities (high/medium/low)
+
+### Phase 5: Testing
+- [x] Build ناجح ✅
+- [x] اختبار Dashboard مع بيانات مختلفة
+

@@ -1,18 +1,15 @@
 'use client';
 
-// Force dynamic rendering to prevent prerendering errors with useContext
 export const dynamic = 'force-dynamic';
 
 /**
- * Dashboard Page
+ * Smart Dashboard v1
  * 
- * Main dashboard with:
- * - Stats overview
- * - Recent orders
- * - Quick actions
- * - Enterprise-grade UI polish
- * 
- * Arabic copy follows I18N_TONE_GUIDE.md
+ * Adaptive Dashboard مبني على بيانات profiles و tenant_setup:
+ * - Sections تظهر/تختفي حسب support_type و channels
+ * - KPI Widgets ديناميكية
+ * - Empty states ذكية
+ * - Next Steps cards
  */
 
 import { AppShell, SkeletonPage, EmptyState } from '@/components/layout';
@@ -32,25 +29,93 @@ import {
   Plus,
   BarChart3,
   Zap,
+  Bot,
+  Users,
+  MessageCircle,
+  Instagram,
+  Globe,
+  Warehouse,
+  Settings,
+  ArrowRight,
+  Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 
-interface StatCardProps {
+// Types
+interface DashboardData {
+  profile: {
+    name: string | null;
+    company_name: string | null;
+    country: string | null;
+    language: string | null;
+    currency: string | null;
+    monthly_order_volume: string | null;
+    recommended_plan: string | null;
+  };
+  setup: {
+    setup_completed: boolean;
+    current_step: number;
+    website_option: string | null;
+    order_sources: string[];
+    warehouse_count: number;
+    support_mode: string | null;
+    support_channels: string[];
+    employee_count: number;
+    employee_roles: string[];
+  } | null;
+  stats: {
+    total_orders: number;
+    pending_orders: number;
+    total_products: number;
+    low_stock_products: number;
+    total_revenue: number;
+    monthly_revenue: number;
+  };
+  features: {
+    has_ai_bots: boolean;
+    has_human_support: boolean;
+    has_hybrid_support: boolean;
+    has_whatsapp: boolean;
+    has_instagram: boolean;
+    has_website: boolean;
+    has_multi_warehouse: boolean;
+  };
+  next_steps: {
+    id: string;
+    title: string;
+    description: string;
+    href: string;
+    priority: 'high' | 'medium' | 'low';
+    completed: boolean;
+  }[];
+}
+
+// Components
+function StatCard({ 
+  title, 
+  value, 
+  icon: Icon, 
+  trend, 
+  loading, 
+  color = 'primary',
+  alert,
+}: { 
   title: string;
   value: string | number;
   icon: React.ComponentType<{ className?: string }>;
   trend?: { value: number; isPositive: boolean };
   loading?: boolean;
-  color?: 'primary' | 'success' | 'warning' | 'info';
-}
-
-function StatCard({ title, value, icon: Icon, trend, loading, color = 'primary' }: StatCardProps) {
+  color?: 'primary' | 'success' | 'warning' | 'info' | 'error';
+  alert?: string;
+}) {
   const colorClasses = {
     primary: 'bg-ds-blue-500/10 text-ds-blue-600',
     success: 'bg-success-100 text-success-600',
     warning: 'bg-warning-100 text-warning-600',
     info: 'bg-info-100 text-info-600',
+    error: 'bg-error-100 text-error-600',
   };
 
   if (loading) {
@@ -66,7 +131,12 @@ function StatCard({ title, value, icon: Icon, trend, loading, color = 'primary' 
   }
 
   return (
-    <div className="ds-card-stat hover:border-primary/30 transition-colors">
+    <div className="ds-card-stat hover:border-primary/30 transition-colors relative">
+      {alert && (
+        <div className="absolute -top-2 -right-2 w-5 h-5 bg-warning-500 rounded-full flex items-center justify-center">
+          <AlertTriangle className="w-3 h-3 text-white" />
+        </div>
+      )}
       <div className="flex items-center gap-3 mb-3">
         <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', colorClasses[color])}>
           <Icon className="h-5 w-5" />
@@ -87,93 +157,110 @@ function StatCard({ title, value, icon: Icon, trend, loading, color = 'primary' 
           <span className="text-muted-foreground text-xs">من الشهر الماضي</span>
         </div>
       )}
+      {alert && (
+        <p className="text-xs text-warning-600 mt-2">{alert}</p>
+      )}
     </div>
   );
 }
 
-interface RecentOrder {
-  id: string;
-  orderNumber: string;
-  customerName: string;
-  total: number;
-  status: string;
-  createdAt: string;
-}
-
-function RecentOrdersTable({ orders, loading }: { orders: RecentOrder[]; loading: boolean }) {
-  const statusConfig: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; className: string }> = {
-    pending: { label: 'قيد الانتظار', icon: Clock, className: 'ds-badge-warning' },
-    confirmed: { label: 'مؤكد', icon: CheckCircle, className: 'ds-badge-info' },
-    shipped: { label: 'تم الشحن', icon: Truck, className: 'ds-badge-info' },
-    delivered: { label: 'تم التسليم', icon: CheckCircle, className: 'ds-badge-success' },
-    cancelled: { label: 'ملغي', icon: AlertCircle, className: 'ds-badge-error' },
+function NextStepCard({ 
+  step, 
+  index 
+}: { 
+  step: DashboardData['next_steps'][0];
+  index: number;
+}) {
+  const priorityColors = {
+    high: 'border-error-500/50 bg-error-50/50',
+    medium: 'border-warning-500/50 bg-warning-50/50',
+    low: 'border-info-500/50 bg-info-50/50',
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-3">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="h-14 bg-muted rounded-lg animate-pulse" />
-        ))}
-      </div>
-    );
-  }
-
-  if (orders.length === 0) {
-    return (
-      <EmptyState
-        preset="orders"
-        action={
-          <Link href="/orders/new" className="ds-btn-primary px-4 py-2 rounded-lg text-sm inline-flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            إنشاء طلب جديد
-          </Link>
-        }
-      />
-    );
-  }
+  const priorityLabels = {
+    high: 'مهم جداً',
+    medium: 'مهم',
+    low: 'اختياري',
+  };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-border">
-            <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              رقم الطلب
-            </th>
-            <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              العميل
-            </th>
-            <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              المبلغ
-            </th>
-            <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              الحالة
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {orders.map((order) => {
-            const status = statusConfig[order.status] || statusConfig.pending;
-            const StatusIcon = status.icon;
-            return (
-              <tr key={order.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                <td className="py-3 px-4">
-                  <span className="text-sm font-medium text-primary">{order.orderNumber}</span>
-                </td>
-                <td className="py-3 px-4 text-sm text-muted-foreground">{order.customerName}</td>
-                <td className="py-3 px-4 text-sm font-medium">{order.total.toFixed(2)} ر.س</td>
-                <td className="py-3 px-4">
-                  <span className={cn(status.className, 'flex items-center gap-1 w-fit')}>
-                    <StatusIcon className="h-3 w-3" />
-                    {status.label}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <Link
+      href={step.href}
+      className={cn(
+        'block p-4 rounded-xl border-2 transition-all hover:scale-[1.02] hover:shadow-lg',
+        priorityColors[step.priority]
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/80">
+              {priorityLabels[step.priority]}
+            </span>
+            <span className="text-xs text-muted-foreground">خطوة {index + 1}</span>
+          </div>
+          <h3 className="font-semibold text-foreground mb-1">{step.title}</h3>
+          <p className="text-sm text-muted-foreground">{step.description}</p>
+        </div>
+        <ArrowRight className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-1" />
+      </div>
+    </Link>
+  );
+}
+
+function FeatureStatusCard({
+  title,
+  description,
+  icon: Icon,
+  enabled,
+  href,
+  channels,
+}: {
+  title: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  enabled: boolean;
+  href: string;
+  channels?: string[];
+}) {
+  return (
+    <div className={cn(
+      'p-4 rounded-xl border transition-all',
+      enabled ? 'border-success-500/30 bg-success-50/30' : 'border-border bg-muted/30'
+    )}>
+      <div className="flex items-start gap-3">
+        <div className={cn(
+          'w-10 h-10 rounded-lg flex items-center justify-center',
+          enabled ? 'bg-success-100 text-success-600' : 'bg-muted text-muted-foreground'
+        )}>
+          <Icon className="w-5 h-5" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <h4 className="font-medium">{title}</h4>
+            {enabled ? (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-success-100 text-success-700">مفعّل</span>
+            ) : (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">غير مفعّل</span>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground mb-2">{description}</p>
+          {channels && channels.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {channels.map(ch => (
+                <span key={ch} className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary">
+                  {ch}
+                </span>
+              ))}
+            </div>
+          )}
+          {!enabled && (
+            <Link href={href} className="text-xs text-primary hover:underline mt-2 inline-block">
+              تفعيل الآن ←
+            </Link>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -206,6 +293,8 @@ function QuickActionCard({
 export default function DashboardPage() {
   const { user, isLoading: authLoading, isAuthenticated, logout } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // SECURITY: Redirect unauthenticated users to login
   useEffect(() => {
@@ -214,33 +303,47 @@ export default function DashboardPage() {
     }
   }, [authLoading, isAuthenticated]);
 
-  // Simulate loading state
+  // Fetch dashboard data
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    async function fetchDashboard() {
+      try {
+        const res = await fetch('/api/dashboard');
+        if (!res.ok) {
+          throw new Error('Failed to fetch dashboard data');
+        }
+        const data = await res.json();
+        setDashboardData(data);
+      } catch (err: any) {
+        console.error('Dashboard fetch error:', err);
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    }
 
-  // Placeholder data - will be replaced with real API calls
-  const stats = {
-    products: 0,
-    orders: 0,
-    walletBalance: 0,
-    netProfit: 0,
-    profitGrowth: 0,
-  };
-
-  const recentOrders: RecentOrder[] = [];
+    if (isAuthenticated) {
+      fetchDashboard();
+    }
+  }, [isAuthenticated]);
 
   // Format currency
   const formatCurrency = (amount: number) => {
+    const currency = dashboardData?.profile?.currency || 'SAR';
+    const currencySymbols: Record<string, string> = {
+      SAR: 'ر.س',
+      USD: '$',
+      EUR: '€',
+      EGP: 'ج.م',
+      AED: 'د.إ',
+    };
     return new Intl.NumberFormat('ar-SA', {
       style: 'decimal',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount) + ' ر.س';
+    }).format(amount) + ' ' + (currencySymbols[currency] || currency);
   };
 
-  // SECURITY: Show loading while checking auth, or if not authenticated
+  // SECURITY: Show loading while checking auth
   if (authLoading || !isAuthenticated) {
     return (
       <AppShell
@@ -252,62 +355,138 @@ export default function DashboardPage() {
     );
   }
 
+  const stats = dashboardData?.stats || {
+    total_orders: 0,
+    pending_orders: 0,
+    total_products: 0,
+    low_stock_products: 0,
+    total_revenue: 0,
+    monthly_revenue: 0,
+  };
+
+  const features = dashboardData?.features || {
+    has_ai_bots: false,
+    has_human_support: false,
+    has_hybrid_support: false,
+    has_whatsapp: false,
+    has_instagram: false,
+    has_website: false,
+    has_multi_warehouse: false,
+  };
+
+  const next_steps = dashboardData?.next_steps || [];
+  const setup = dashboardData?.setup;
+  const profile = dashboardData?.profile;
+
   return (
     <AppShell
       breadcrumbs={[{ label: 'لوحة التحكم' }]}
       title="لوحة التحكم"
-      description={`نظرة عامة على أداء متجرك${user?.tenantName ? ` - ${user.tenantName}` : ''}`}
+      description={`مرحباً ${profile?.name || user?.name || ''}${profile?.company_name ? ` - ${profile.company_name}` : ''}`}
       user={user ? { name: user.name, email: user.email } : null}
       onLogout={logout}
     >
+      {/* Next Steps - Show if there are pending steps */}
+      {next_steps.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold">الخطوات التالية</h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+              {next_steps.length} خطوات
+            </span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {next_steps.slice(0, 3).map((step, index) => (
+              <NextStepCard key={step.id} step={step} index={index} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
           title="إجمالي المنتجات"
-          value={stats.products}
+          value={stats.total_products}
           icon={Package}
           loading={isLoading}
         />
         <StatCard
           title="إجمالي الطلبات"
-          value={stats.orders}
+          value={stats.total_orders}
           icon={ShoppingCart}
           loading={isLoading}
           color="info"
+          alert={stats.pending_orders > 0 ? `${stats.pending_orders} طلبات معلقة` : undefined}
         />
         <StatCard
-          title="رصيد المحفظة"
-          value={formatCurrency(stats.walletBalance)}
-          icon={Wallet}
-          loading={isLoading}
-          color="warning"
-        />
-        <StatCard
-          title="صافي الربح (الشهر)"
-          value={formatCurrency(stats.netProfit)}
+          title="الإيرادات (الشهر)"
+          value={formatCurrency(stats.monthly_revenue)}
           icon={TrendingUp}
-          trend={
-            stats.profitGrowth
-              ? { value: stats.profitGrowth, isPositive: stats.profitGrowth > 0 }
-              : undefined
-          }
           loading={isLoading}
           color="success"
         />
+        <StatCard
+          title="المخزون المنخفض"
+          value={stats.low_stock_products}
+          icon={Warehouse}
+          loading={isLoading}
+          color={stats.low_stock_products > 0 ? 'warning' : 'primary'}
+          alert={stats.low_stock_products > 5 ? 'يحتاج تحديث عاجل' : undefined}
+        />
       </div>
 
-      {/* Recent Orders */}
-      <div className="ds-card mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">الطلبات الأخيرة</h2>
-          <Link 
-            href="/orders" 
-            className="text-sm text-primary hover:underline"
-          >
-            عرض الكل
-          </Link>
+      {/* Feature Status Section - Based on setup choices */}
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold mb-4">حالة الميزات</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Support Mode */}
+          <FeatureStatusCard
+            title="خدمة العملاء"
+            description={
+              features.has_hybrid_support 
+                ? 'دعم مختلط (AI + بشري)' 
+                : features.has_ai_bots 
+                  ? 'دعم آلي بالذكاء الاصطناعي'
+                  : features.has_human_support
+                    ? 'دعم بشري'
+                    : 'غير محدد'
+            }
+            icon={features.has_ai_bots ? Bot : Users}
+            enabled={features.has_ai_bots || features.has_human_support}
+            href="/settings"
+            channels={setup?.support_channels}
+          />
+
+          {/* Channels */}
+          <FeatureStatusCard
+            title="قنوات التواصل"
+            description={
+              [
+                features.has_whatsapp && 'واتساب',
+                features.has_instagram && 'انستجرام',
+                features.has_website && 'الموقع',
+              ].filter(Boolean).join(' • ') || 'لم يتم تفعيل قنوات'
+            }
+            icon={MessageCircle}
+            enabled={features.has_whatsapp || features.has_instagram || features.has_website}
+            href="/integrations"
+          />
+
+          {/* Multi-warehouse */}
+          <FeatureStatusCard
+            title="إدارة المخازن"
+            description={
+              features.has_multi_warehouse 
+                ? `${setup?.warehouse_count || 1} مخازن` 
+                : 'مخزن واحد'
+            }
+            icon={Warehouse}
+            enabled={features.has_multi_warehouse}
+            href="/inventory"
+          />
         </div>
-        <RecentOrdersTable orders={recentOrders} loading={isLoading} />
       </div>
 
       {/* Quick Actions */}
@@ -340,6 +519,23 @@ export default function DashboardPage() {
           />
         </div>
       </div>
+
+      {/* Empty State for new users */}
+      {stats.total_products === 0 && stats.total_orders === 0 && setup?.setup_completed && (
+        <div className="mt-8">
+          <EmptyState
+            preset="products"
+            title="ابدأ رحلتك التجارية"
+            description="أضف منتجاتك الأولى لبدء استقبال الطلبات وتتبع أدائك"
+            action={
+              <Link href="/products/new" className="ds-btn-primary px-6 py-3 rounded-lg inline-flex items-center gap-2">
+                <Plus className="h-5 w-5" />
+                إضافة أول منتج
+              </Link>
+            }
+          />
+        </div>
+      )}
     </AppShell>
   );
 }
