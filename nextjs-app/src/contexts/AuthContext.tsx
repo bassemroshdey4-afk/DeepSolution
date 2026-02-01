@@ -1,16 +1,17 @@
 'use client';
 
 import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
-import { createClient, User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 
 // Create Supabase client for browser
-// CRITICAL: Must use PKCE flow to match login and callback handlers
+// CRITICAL: Use createBrowserClient to ensure cookies are set for middleware
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // Only create client if env vars are available
 const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey, {
+  ? createBrowserClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         flowType: 'pkce',
         detectSessionInUrl: true,

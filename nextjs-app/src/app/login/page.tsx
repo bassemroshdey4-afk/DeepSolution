@@ -22,7 +22,7 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,11 +46,11 @@ function getSiteUrl(): string {
 }
 
 // Create Supabase client for auth (with fallback for missing env)
-// CRITICAL: Must use PKCE flow to match callback handler
+// CRITICAL: Use createBrowserClient to ensure cookies are set for middleware
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey, {
+  ? createBrowserClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         flowType: 'pkce',
         detectSessionInUrl: true,

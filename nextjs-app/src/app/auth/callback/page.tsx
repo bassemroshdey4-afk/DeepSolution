@@ -3,25 +3,26 @@
 /**
  * OAuth Callback Page (Client Component)
  * 
- * CRITICAL: Handles BOTH OAuth flows:
- * 1. PKCE Code Flow: ?code=xxx (query string) - PREFERRED
- * 2. Implicit Flow: #access_token=xxx (hash fragment) - FALLBACK
+ * ROOT FIX: Uses createBrowserClient from @supabase/ssr
+ * This ensures cookies are written correctly for middleware to read
  * 
- * The hash fragment (#) is NOT sent to the server, so we MUST use
- * a client component to read it from window.location.hash
+ * The key difference:
+ * - createClient() → stores session in localStorage only
+ * - createBrowserClient() → stores session in BOTH localStorage AND cookies
  */
 
 import { useEffect, useState, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 
 // Get Supabase config
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Create Supabase client with PKCE flow
+// CRITICAL: Use createBrowserClient (not createClient) to ensure cookies are set
+// This is required for middleware to read the session
 const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey, {
+  ? createBrowserClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         flowType: 'pkce',
         detectSessionInUrl: true,
@@ -108,14 +109,11 @@ function CallbackContent() {
     // ============================================================
     console.log('='.repeat(70));
     console.log('[CALLBACK] ========== OAuth Callback Hit ==========');
+    console.log('[CALLBACK] Using createBrowserClient (cookies enabled)');
     console.log('[CALLBACK] Full URL:', debug.fullUrl);
-    console.log('[CALLBACK] Pathname:', debug.pathname);
-    console.log('[CALLBACK] Search:', debug.search);
-    console.log('[CALLBACK] Hash:', hash ? `YES (length: ${hash.length})` : 'NO');
     console.log('[CALLBACK] Code:', code ? `YES (${code.substring(0, 20)}...)` : 'NO');
+    console.log('[CALLBACK] Hash:', hash ? `YES (length: ${hash.length})` : 'NO');
     console.log('[CALLBACK] Hash keys:', debug.hashKeys.join(', ') || 'none');
-    console.log('[CALLBACK] Query keys:', debug.queryKeys.join(', ') || 'none');
-    console.log('[CALLBACK] Supabase configured:', debug.supabaseConfigured);
     console.log('='.repeat(70));
 
     // ============================================================
@@ -132,15 +130,15 @@ function CallbackContent() {
     // ============================================================
     if (!supabase) {
       console.error('[CALLBACK] Supabase not configured!');
-      debug.errorMessage = 'Supabase not configured - missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY';
+      debug.errorMessage = 'Supabase not configured';
       setDebugInfo(debug);
       setStatus('debug');
-      setErrorMessage('نظام المصادقة غير مُعد. تأكد من إعداد متغيرات البيئة في Vercel.');
+      setErrorMessage('نظام المصادقة غير مُعد.');
       return;
     }
 
     // ============================================================
-    // FLOW 0: Try getSession first (detectSessionInUrl might have worked)
+    // FLOW 0: Check if detectSessionInUrl already worked
     // ============================================================
     console.log('[CALLBACK] Checking if session already exists...');
     setStatus('checking_session');
@@ -149,12 +147,14 @@ function CallbackContent() {
       const { data: sessionData } = await supabase.auth.getSession();
       if (sessionData.session) {
         console.log('[CALLBACK] ✅ Session already exists! User:', sessionData.session.user.email);
+        console.log('[CALLBACK] Cookies should be set by createBrowserClient');
         setStatus('success');
-        setTimeout(() => router.replace('/dashboard'), 100);
+        // Use window.location for hard redirect to ensure cookies are sent
+        window.location.href = '/dashboard';
         return;
       }
     } catch (err) {
-      console.log('[CALLBACK] No existing session, continuing with flow detection...');
+      console.log('[CALLBACK] No existing session, continuing...');
     }
 
     // ============================================================
@@ -175,8 +175,10 @@ function CallbackContent() {
 
         if (data.session && data.user) {
           console.log('[CALLBACK] ✅ PKCE Success! User:', data.user.email);
+          console.log('[CALLBACK] Session stored in cookies by createBrowserClient');
           setStatus('success');
-          setTimeout(() => router.replace('/dashboard'), 100);
+          // Use window.location for hard redirect to ensure cookies are sent
+          window.location.href = '/dashboard';
           return;
         }
 
@@ -199,10 +201,6 @@ function CallbackContent() {
       
       const accessToken = hashParams.access_token;
       const refreshToken = hashParams.refresh_token;
-      
-      if (!refreshToken) {
-        console.warn('[CALLBACK] No refresh_token in hash, session may be short-lived');
-      }
 
       try {
         const { data, error: sessionError } = await supabase.auth.setSession({
@@ -219,11 +217,8 @@ function CallbackContent() {
         if (data.session && data.user) {
           console.log('[CALLBACK] ✅ Implicit Flow Success! User:', data.user.email);
           setStatus('success');
-          // Clear hash from URL
-          if (typeof window !== 'undefined') {
-            window.history.replaceState(null, '', window.location.pathname);
-          }
-          setTimeout(() => router.replace('/dashboard'), 100);
+          // Clear hash and redirect
+          window.location.href = '/dashboard';
           return;
         }
 
@@ -241,16 +236,13 @@ function CallbackContent() {
     // NO CODE AND NO HASH - Show Debug Info
     // ============================================================
     console.error('[CALLBACK] ❌ No code and no access_token!');
-    console.error('[CALLBACK] This means Supabase did not send any auth data');
-    console.error('[CALLBACK] Check Supabase Dashboard → Authentication → URL Configuration');
-    debug.errorMessage = 'No authentication data received from Supabase';
+    debug.errorMessage = 'No authentication data received';
     setDebugInfo(debug);
     setStatus('debug');
-    setErrorMessage('لم يتم استلام بيانات المصادقة. راجع إعدادات Supabase URL Configuration.');
+    setErrorMessage('لم يتم استلام بيانات المصادقة.');
   }, [searchParams, router]);
 
   useEffect(() => {
-    // Small delay to ensure window is ready
     const timer = setTimeout(() => {
       handleCallback();
     }, 100);
@@ -286,73 +278,75 @@ function CallbackContent() {
             </svg>
           </div>
           <p className="text-foreground font-medium">تم تسجيل الدخول بنجاح!</p>
-          <p className="text-muted-foreground text-sm mt-1">جاري التحويل إلى لوحة التحكم...</p>
+          <p className="text-muted-foreground text-sm mt-1">جاري التحويل...</p>
         </div>
       </div>
     );
   }
 
-  // Debug/Error state
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="max-w-lg w-full bg-card border border-border rounded-xl p-6 shadow-lg">
-        <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-6 h-6 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-foreground">مشكلة في تسجيل الدخول</h2>
-          <p className="text-muted-foreground mt-2">{errorMessage}</p>
-        </div>
+  // Debug state
+  if (status === 'debug' && debugInfo) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="max-w-lg w-full">
+          <div className="bg-card border border-border rounded-lg p-6 shadow-lg">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">مشكلة في تسجيل الدخول</h2>
+                <p className="text-sm text-muted-foreground">{errorMessage}</p>
+              </div>
+            </div>
+            
+            <div className="bg-muted/50 rounded-lg p-4 text-sm font-mono space-y-2">
+              <p><span className="text-muted-foreground">Pathname:</span> {debugInfo.pathname}</p>
+              <p><span className="text-muted-foreground">Code in URL:</span> {debugInfo.hasCode ? '✅ نعم' : '❌ لا'}</p>
+              <p><span className="text-muted-foreground">Hash in URL:</span> {debugInfo.hasHash ? '✅ نعم' : '❌ لا'}</p>
+              <p><span className="text-muted-foreground">Hash keys:</span> {debugInfo.hashKeys.length > 0 ? debugInfo.hashKeys.join(', ') : 'لا يوجد'}</p>
+              <p><span className="text-muted-foreground">Query keys:</span> {debugInfo.queryKeys.length > 0 ? debugInfo.queryKeys.join(', ') : 'لا يوجد'}</p>
+              <p><span className="text-muted-foreground">Supabase:</span> {debugInfo.supabaseConfigured ? '✅ مُعد' : '❌ غير مُعد'}</p>
+            </div>
 
-        {debugInfo && (
-          <div className="bg-muted/50 rounded-lg p-4 text-sm font-mono mb-6 overflow-x-auto">
-            <h3 className="font-bold text-foreground mb-2">معلومات التشخيص:</h3>
-            <div className="space-y-1 text-muted-foreground text-xs">
-              <p>• Pathname: {debugInfo.pathname}</p>
-              <p>• Search: {debugInfo.search || '(empty)'}</p>
-              <p>• Hash: {debugInfo.hash ? `(length: ${debugInfo.hash.length})` : '(empty)'}</p>
-              <p>• Code in URL: {debugInfo.hasCode ? '✅ نعم' : '❌ لا'}</p>
-              <p>• Hash in URL: {debugInfo.hasHash ? '✅ نعم' : '❌ لا'}</p>
-              <p>• Hash keys: {debugInfo.hashKeys.length > 0 ? debugInfo.hashKeys.join(', ') : 'لا يوجد'}</p>
-              <p>• Query keys: {debugInfo.queryKeys.length > 0 ? debugInfo.queryKeys.join(', ') : 'لا يوجد'}</p>
-              <p>• Supabase: {debugInfo.supabaseConfigured ? '✅ مُعد' : '❌ غير مُعد'}</p>
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">الحل المقترح:</p>
+              <ol className="text-sm text-blue-700 dark:text-blue-300 mt-2 space-y-1 list-decimal list-inside">
+                <li>افتح Supabase Dashboard → Authentication → URL Configuration</li>
+                <li>تأكد أن Site URL = https://deepsolution.vercel.app</li>
+                <li>أضف /auth/callback إلى Redirect URLs</li>
+              </ol>
+            </div>
+
+            <div className="mt-4 flex gap-3">
+              <a 
+                href="/login" 
+                className="flex-1 bg-primary text-primary-foreground py-2 px-4 rounded-lg text-center font-medium hover:bg-primary/90 transition-colors"
+              >
+                العودة لتسجيل الدخول
+              </a>
             </div>
           </div>
-        )}
-
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
-          <h3 className="font-bold text-blue-800 dark:text-blue-300 mb-2">الحل المقترح:</h3>
-          <ol className="list-decimal list-inside text-sm text-blue-700 dark:text-blue-400 space-y-1">
-            <li>افتح Supabase Dashboard → Authentication → URL Configuration</li>
-            <li>تأكد أن Site URL = https://deepsolution.vercel.app</li>
-            <li>أضف https://deepsolution.vercel.app/auth/callback إلى Redirect URLs</li>
-            <li>في Vercel Settings → Environment Variables، تأكد من:
-              <ul className="list-disc list-inside mr-4 mt-1">
-                <li>NEXT_PUBLIC_SUPABASE_URL</li>
-                <li>NEXT_PUBLIC_SUPABASE_ANON_KEY</li>
-                <li>NEXT_PUBLIC_SITE_URL = https://deepsolution.vercel.app</li>
-              </ul>
-            </li>
-            <li>اعمل Redeploy وجرب مرة أخرى</li>
-          </ol>
         </div>
+      </div>
+    );
+  }
 
-        <div className="flex gap-3">
-          <button
-            onClick={() => window.location.href = '/login'}
-            className="flex-1 bg-primary text-primary-foreground py-2 px-4 rounded-lg font-medium hover:bg-primary/90 transition-colors"
-          >
-            العودة لتسجيل الدخول
-          </button>
-          <button
-            onClick={() => window.location.reload()}
-            className="flex-1 bg-muted text-foreground py-2 px-4 rounded-lg font-medium hover:bg-muted/80 transition-colors"
-          >
-            إعادة المحاولة
-          </button>
+  // Error state
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </div>
+        <p className="text-foreground font-medium">{errorMessage || 'حدث خطأ غير متوقع'}</p>
+        <a href="/login" className="text-primary hover:underline mt-2 inline-block">
+          العودة لتسجيل الدخول
+        </a>
       </div>
     </div>
   );
