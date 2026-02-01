@@ -46,10 +46,18 @@ function getSiteUrl(): string {
 }
 
 // Create Supabase client for auth (with fallback for missing env)
+// CRITICAL: Must use PKCE flow to match callback handler
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        flowType: 'pkce',
+        detectSessionInUrl: true,
+        autoRefreshToken: true,
+        persistSession: true,
+      },
+    })
   : null;
 
 // Error messages in Arabic
