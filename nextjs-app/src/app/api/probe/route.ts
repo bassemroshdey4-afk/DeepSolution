@@ -1,5 +1,5 @@
 /**
- * Production Probe Endpoint v2
+ * Production Probe Endpoint v3
  * 
  * Returns deployment info for verification:
  * - vercelEnv: production/preview/development
@@ -8,7 +8,6 @@
  * - gitCommit: from VERCEL_GIT_COMMIT_SHA
  * - buildId: from NEXT_PUBLIC_BUILD_ID
  * - mwVersion: middleware version
- * - killSwitch: NEXT_PUBLIC_KILL_SWITCH status
  * - mwActive: middleware is active
  * 
  * NO SECRETS ARE EXPOSED
@@ -19,6 +18,8 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+const MW_VERSION = 'v7-final-2026-02-02';
+
 export async function GET() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -28,9 +29,6 @@ export async function GET() {
     .replace('https://', '')
     .replace('.supabase.co', '')
     .substring(0, 8);
-  
-  // Kill switch status
-  const killSwitch = process.env.NEXT_PUBLIC_KILL_SWITCH === 'true';
   
   const probeData = {
     // Vercel environment
@@ -48,14 +46,14 @@ export async function GET() {
     // Build ID for version tracking
     buildId: process.env.NEXT_PUBLIC_BUILD_ID || 'dev-local',
     
-    // Middleware version
-    mwVersion: 'v6-killswitch-2026-02-02',
+    // Middleware version - FINAL REDIRECT LOGIC ACTIVE
+    mwVersion: MW_VERSION,
     
-    // KILL SWITCH STATUS
-    killSwitch: killSwitch,
-    
-    // Middleware is active
+    // Middleware is active with REAL redirects
     mwActive: true,
+    
+    // Redirect logic status
+    redirectsEnabled: true,
     
     // Timestamp for cache verification
     timestamp: new Date().toISOString(),
@@ -67,9 +65,9 @@ export async function GET() {
   return NextResponse.json(probeData, {
     headers: {
       'Cache-Control': 'no-store, no-cache, must-revalidate',
-      'x-probe-version': 'v2',
-      'x-mw-version': 'v6-killswitch-2026-02-02',
-      'x-kill-switch': killSwitch ? 'active' : 'inactive',
+      'x-probe-version': 'v3',
+      'x-mw-version': MW_VERSION,
+      'x-redirects-enabled': 'true',
     },
   });
 }

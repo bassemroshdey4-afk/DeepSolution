@@ -1,17 +1,17 @@
 /**
- * Next.js Middleware - Production Proof v6 (Kill Switch Edition)
+ * Next.js Middleware - Production v7 (Final Redirect Logic)
  * 
  * PRODUCTION PROOFS:
  * 1. x-mw-hit: 1 header on ALL responses (including redirects)
- * 2. x-mw-version: v6-killswitch header for version tracking
+ * 2. x-mw-version: v7-final-2026-02-02 header for version tracking
  * 3. x-mw-timestamp: ISO timestamp for cache verification
- * 4. KILL_SWITCH: When true, logs only without redirecting
  * 
  * CRITICAL RULES:
  * 1. Middleware is the SOLE authority for user routing after login
  * 2. NO defaults, NO backfill - DB values only
  * 3. NO cache - fresh DB fetch every request
  * 4. NO session.user_metadata - DB is source of truth
+ * 5. STRICT CHECK: onboarding_completed and setup_completed must be EXACTLY true
  */
 
 import { NextResponse } from 'next/server';
@@ -20,10 +20,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // Build ID for production verification
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || 'dev-local';
-const MW_VERSION = 'v6-killswitch-2026-02-02';
-
-// KILL SWITCH: When true, disable redirects and log only
-const KILL_SWITCH = process.env.NEXT_PUBLIC_KILL_SWITCH === 'true';
+const MW_VERSION = 'v7-final-2026-02-02';
 
 // Basic Auth credentials from environment
 const BASIC_AUTH_USER = process.env.BASIC_AUTH_USER || 'admin';
@@ -66,9 +63,6 @@ const PASSTHROUGH_PATHS = [
   '/api/probe',
 ];
 
-// ALL paths that should get x-mw-hit header (including login)
-const MW_HIT_PATHS = ['/dashboard', '/setup', '/onboarding', '/login'];
-
 function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PATHS.some(path => 
     pathname === path || pathname.startsWith(path + '/')
@@ -77,12 +71,6 @@ function isProtectedPath(pathname: string): boolean {
 
 function isPassthroughPath(pathname: string): boolean {
   return PASSTHROUGH_PATHS.some(path => 
-    pathname === path || pathname.startsWith(path + '/')
-  );
-}
-
-function shouldAddMwHitHeader(pathname: string): boolean {
-  return MW_HIT_PATHS.some(path => 
     pathname === path || pathname.startsWith(path + '/')
   );
 }
@@ -110,7 +98,6 @@ function addMwHeaders(response: NextResponse, pathname: string, originalPath?: s
   response.headers.set('x-mw-version', MW_VERSION);
   response.headers.set('x-mw-timestamp', new Date().toISOString());
   response.headers.set('x-mw-build-id', BUILD_ID);
-  response.headers.set('x-mw-kill-switch', KILL_SWITCH ? 'active' : 'inactive');
   response.headers.set('x-mw-path', pathname);
   if (originalPath) {
     response.headers.set('x-mw-original-path', originalPath);
@@ -150,10 +137,9 @@ function logJourneyDecision(data: {
   db_setup_completed: boolean | null;
   redirect_target: string;
   reason: string;
-  kill_switch_active: boolean;
   source: 'DB_FETCH';
 }) {
-  console.log('[MW-JOURNEY-DB]', JSON.stringify({
+  console.log('[MW-JOURNEY]', JSON.stringify({
     timestamp: new Date().toISOString(),
     mw_version: MW_VERSION,
     build_id: BUILD_ID,
@@ -203,7 +189,7 @@ export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const requestId = Math.random().toString(36).substring(7);
   
-  console.log(`[MW-${requestId}] v=${MW_VERSION} build=${BUILD_ID} kill_switch=${KILL_SWITCH} path=${pathname}${search}`);
+  console.log(`[MW-${requestId}] v=${MW_VERSION} build=${BUILD_ID} path=${pathname}${search}`);
   
   // PASSTHROUGH PATHS - NO MODIFICATIONS (except /api/probe)
   if (isPassthroughPath(pathname)) {
@@ -257,17 +243,8 @@ export async function middleware(request: NextRequest) {
         db_setup_completed: null,
         redirect_target: '/login',
         reason: 'Supabase not configured',
-        kill_switch_active: KILL_SWITCH,
         source: 'DB_FETCH'
       });
-      
-      // KILL SWITCH: Log only, don't redirect
-      if (KILL_SWITCH) {
-        console.log(`[MW-${requestId}] KILL_SWITCH: Would redirect to /login but allowing through`);
-        const response = NextResponse.next();
-        response.headers.set('x-mw-would-redirect', '/login');
-        return addMwHeaders(response, pathname);
-      }
       
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
@@ -286,17 +263,8 @@ export async function middleware(request: NextRequest) {
         db_setup_completed: null,
         redirect_target: '/login',
         reason: 'No user ID in cookie',
-        kill_switch_active: KILL_SWITCH,
         source: 'DB_FETCH'
       });
-      
-      // KILL SWITCH: Log only, don't redirect
-      if (KILL_SWITCH) {
-        console.log(`[MW-${requestId}] KILL_SWITCH: Would redirect to /login but allowing through`);
-        const response = NextResponse.next();
-        response.headers.set('x-mw-would-redirect', '/login');
-        return addMwHeaders(response, pathname);
-      }
       
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
@@ -348,19 +316,10 @@ export async function middleware(request: NextRequest) {
           reason: profileError 
             ? `Profile error: ${profileError.message}` 
             : `onboarding_completed=${profile?.onboarding_completed} (not true)`,
-          kill_switch_active: KILL_SWITCH,
           source: 'DB_FETCH'
         });
         
-        // KILL SWITCH: Log only, don't redirect
-        if (KILL_SWITCH) {
-          console.log(`[MW-${requestId}] KILL_SWITCH: Would redirect to /onboarding but allowing through`);
-          const response = NextResponse.next();
-          response.headers.set('x-mw-would-redirect', '/onboarding');
-          response.headers.set('x-mw-db-onboarding', String(profile?.onboarding_completed ?? 'null'));
-          return addMwHeaders(response, pathname);
-        }
-        
+        console.log(`[MW-${requestId}] REDIRECT: ${pathname} → /onboarding (onboarding_completed=${profile?.onboarding_completed})`);
         const onboardingUrl = new URL('/onboarding', request.url);
         return createRedirectWithHeaders(onboardingUrl, pathname);
       }
@@ -399,19 +358,10 @@ export async function middleware(request: NextRequest) {
             reason: setupError 
               ? `Setup error: ${setupError.message}` 
               : `setup_completed=${tenantSetup?.setup_completed} (not true)`,
-            kill_switch_active: KILL_SWITCH,
             source: 'DB_FETCH'
           });
           
-          // KILL SWITCH: Log only, don't redirect
-          if (KILL_SWITCH) {
-            console.log(`[MW-${requestId}] KILL_SWITCH: Would redirect to /setup but allowing through`);
-            const response = NextResponse.next();
-            response.headers.set('x-mw-would-redirect', '/setup');
-            response.headers.set('x-mw-db-setup', String(tenantSetup?.setup_completed ?? 'null'));
-            return addMwHeaders(response, pathname);
-          }
-          
+          console.log(`[MW-${requestId}] REDIRECT: ${pathname} → /setup (setup_completed=${tenantSetup?.setup_completed})`);
           const setupUrl = new URL('/setup', request.url);
           return createRedirectWithHeaders(setupUrl, pathname);
         }
@@ -423,26 +373,17 @@ export async function middleware(request: NextRequest) {
           db_setup_completed: null,
           redirect_target: '/setup',
           reason: 'No tenant_id found',
-          kill_switch_active: KILL_SWITCH,
           source: 'DB_FETCH'
         });
         
-        // KILL SWITCH: Log only, don't redirect
-        if (KILL_SWITCH) {
-          console.log(`[MW-${requestId}] KILL_SWITCH: Would redirect to /setup (no tenant) but allowing through`);
-          const response = NextResponse.next();
-          response.headers.set('x-mw-would-redirect', '/setup');
-          response.headers.set('x-mw-reason', 'no-tenant');
-          return addMwHeaders(response, pathname);
-        }
-        
+        console.log(`[MW-${requestId}] REDIRECT: ${pathname} → /setup (no tenant_id)`);
         const setupUrl = new URL('/setup', request.url);
         return createRedirectWithHeaders(setupUrl, pathname);
       }
     }
     
     // All checks passed - allow access
-    console.log(`[MW-${requestId}] Access granted to ${pathname}`);
+    console.log(`[MW-${requestId}] ACCESS GRANTED: ${pathname}`);
     const response = NextResponse.next();
     return addMwHeaders(response, pathname);
   }
