@@ -1,24 +1,25 @@
 /**
- * Next.js Middleware - Legacy Users Hard Redirect v4
+ * Next.js Middleware - Production Proof v5
+ * 
+ * PRODUCTION PROOFS:
+ * 1. x-mw-hit: 1 header on /dashboard|/setup|/onboarding
+ * 2. x-mw-version: v5-prod header for version tracking
+ * 3. x-mw-timestamp: ISO timestamp for cache verification
  * 
  * CRITICAL RULES:
  * 1. Middleware is the SOLE authority for user routing after login
  * 2. NO defaults, NO backfill - DB values only
  * 3. NO cache - fresh DB fetch every request
  * 4. NO session.user_metadata - DB is source of truth
- * 5. profiles.onboarding_completed !== true → /onboarding (mandatory)
- * 6. tenant_setup.setup_completed !== true → /setup (after onboarding)
- * 7. Dashboard access ONLY after both are completed
- * 8. Clear logging for every redirect decision
  */
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Force dynamic - no caching
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+// Build ID for production verification
+const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || 'dev-local';
+const MW_VERSION = 'v5-prod-2026-02-02';
 
 // Basic Auth credentials from environment
 const BASIC_AUTH_USER = process.env.BASIC_AUTH_USER || 'admin';
@@ -59,7 +60,11 @@ const PASSTHROUGH_PATHS = [
   '/api/webhook',
   '/api/setup',
   '/api/onboarding',
+  '/api/probe',
 ];
+
+// Paths that get x-mw-hit header for production proof
+const MW_HIT_PATHS = ['/dashboard', '/setup', '/onboarding'];
 
 function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PATHS.some(path => 
@@ -69,6 +74,12 @@ function isProtectedPath(pathname: string): boolean {
 
 function isPassthroughPath(pathname: string): boolean {
   return PASSTHROUGH_PATHS.some(path => 
+    pathname === path || pathname.startsWith(path + '/')
+  );
+}
+
+function shouldAddMwHitHeader(pathname: string): boolean {
+  return MW_HIT_PATHS.some(path => 
     pathname === path || pathname.startsWith(path + '/')
   );
 }
@@ -87,7 +98,15 @@ function validateBasicAuth(request: NextRequest): boolean {
   }
 }
 
-function addSecurityHeaders(response: NextResponse): NextResponse {
+function addSecurityHeaders(response: NextResponse, pathname: string): NextResponse {
+  // PRODUCTION PROOF: Add x-mw-hit header for specific paths
+  if (shouldAddMwHitHeader(pathname)) {
+    response.headers.set('x-mw-hit', '1');
+    response.headers.set('x-mw-version', MW_VERSION);
+    response.headers.set('x-mw-timestamp', new Date().toISOString());
+    response.headers.set('x-mw-build-id', BUILD_ID);
+  }
+  
   // Prevent caching of protected pages
   response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   response.headers.set('Pragma', 'no-cache');
@@ -110,7 +129,6 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
 
 /**
  * Log user journey decision with all relevant data
- * This is the PROOF that middleware reads from DB
  */
 function logJourneyDecision(data: {
   user_id: string | null;
@@ -122,28 +140,25 @@ function logJourneyDecision(data: {
 }) {
   console.log('[MW-JOURNEY-DB]', JSON.stringify({
     timestamp: new Date().toISOString(),
+    mw_version: MW_VERSION,
+    build_id: BUILD_ID,
     ...data
   }));
 }
 
 /**
  * Extract user ID from Supabase auth cookie
- * We only use the cookie to get the user ID, then fetch everything from DB
  */
 function extractUserIdFromCookie(request: NextRequest): string | null {
-  // Supabase stores session in cookies with project ref
   const cookies = request.cookies.getAll();
   
   for (const cookie of cookies) {
-    // Look for Supabase auth cookie (format: sb-<project-ref>-auth-token)
     if (cookie.name.includes('-auth-token')) {
       try {
-        // The cookie value is base64 encoded JSON
         const decoded = JSON.parse(cookie.value);
         if (decoded?.user?.id) {
           return decoded.user.id;
         }
-        // Sometimes it's double encoded
         if (typeof decoded === 'string') {
           const innerDecoded = JSON.parse(decoded);
           if (innerDecoded?.user?.id) {
@@ -151,11 +166,9 @@ function extractUserIdFromCookie(request: NextRequest): string | null {
           }
         }
       } catch {
-        // Try to parse as array (Supabase sometimes stores as [access_token, refresh_token])
         try {
           const parts = cookie.value.split('.');
           if (parts.length >= 2) {
-            // JWT payload is the second part
             const payload = JSON.parse(atob(parts[1]));
             if (payload?.sub) {
               return payload.sub;
@@ -175,11 +188,9 @@ export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const requestId = Math.random().toString(36).substring(7);
   
-  console.log(`[MW-${requestId}] Request: ${pathname}${search}`);
+  console.log(`[MW-${requestId}] v=${MW_VERSION} build=${BUILD_ID} path=${pathname}${search}`);
   
-  // ============================================================
-  // CRITICAL: PASSTHROUGH PATHS - NO MODIFICATIONS AT ALL
-  // ============================================================
+  // PASSTHROUGH PATHS - NO MODIFICATIONS
   if (isPassthroughPath(pathname)) {
     console.log(`[MW-${requestId}] Passthrough: ${pathname}`);
     return NextResponse.next();
@@ -201,7 +212,7 @@ export async function middleware(request: NextRequest) {
   const isPublic = publicPaths.some(p => pathname === p || pathname.startsWith(p + '/'));
   
   if (isPublic) {
-    return addSecurityHeaders(NextResponse.next());
+    return addSecurityHeaders(NextResponse.next(), pathname);
   }
   
   // Basic Auth for alpha testing (if enabled)
@@ -256,13 +267,9 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
     
-    console.log(`[MW-${requestId}] User ID from cookie: ${userId}`);
+    console.log(`[MW-${requestId}] User: ${userId}`);
     
-    // ============================================================
-    // CRITICAL: CREATE FRESH SUPABASE CLIENT WITH SERVICE KEY
-    // This bypasses RLS and ensures we get the actual DB values
-    // NO CACHING - fresh fetch every request
-    // ============================================================
+    // CREATE FRESH SUPABASE CLIENT WITH SERVICE KEY
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -277,10 +284,8 @@ export async function middleware(request: NextRequest) {
       }
     });
     
-    // ============================================================
-    // STEP 1: FETCH ONBOARDING STATUS FROM DB (NOT SESSION)
-    // ============================================================
-    console.log(`[MW-${requestId}] Fetching profile from DB for user: ${userId}`);
+    // STEP 1: FETCH ONBOARDING STATUS FROM DB
+    console.log(`[MW-${requestId}] Fetching profile from DB...`);
     
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -288,8 +293,8 @@ export async function middleware(request: NextRequest) {
       .eq('id', userId)
       .single();
     
-    console.log(`[MW-${requestId}] DB Profile result:`, JSON.stringify({
-      profile,
+    console.log(`[MW-${requestId}] DB Profile:`, JSON.stringify({
+      onboarding_completed: profile?.onboarding_completed,
       error: profileError?.message
     }));
     
@@ -311,15 +316,18 @@ export async function middleware(request: NextRequest) {
               : 'No profile found in DB',
           source: 'DB_FETCH'
         });
-        console.log(`[MW-${requestId}] REDIRECT to /onboarding - onboarding not completed`);
-        return NextResponse.redirect(new URL('/onboarding', request.url));
+        console.log(`[MW-${requestId}] REDIRECT to /onboarding`);
+        const redirectResponse = NextResponse.redirect(new URL('/onboarding', request.url));
+        redirectResponse.headers.set('x-mw-hit', '1');
+        redirectResponse.headers.set('x-mw-version', MW_VERSION);
+        redirectResponse.headers.set('x-mw-redirect-reason', 'onboarding-not-completed');
+        return redirectResponse;
       }
     }
     
     // If ON onboarding page and onboarding IS completed → redirect to setup or dashboard
     if (pathname === '/onboarding' || pathname.startsWith('/onboarding/')) {
       if (dbOnboardingCompleted) {
-        // Check setup status to determine where to redirect
         const { data: tenantUser } = await supabase
           .from('tenant_users')
           .select('tenant_id')
@@ -359,18 +367,12 @@ export async function middleware(request: NextRequest) {
             return NextResponse.redirect(new URL('/setup', request.url));
           }
         }
-        // No tenant yet - stay on onboarding to create one
       }
-      // Not completed - allow access to onboarding
       const response = NextResponse.next();
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, pathname);
     }
     
-    // ============================================================
-    // STEP 2: FETCH SETUP STATUS FROM DB (NOT SESSION)
-    // ============================================================
-    
-    // Skip setup check if on /setup page
+    // STEP 2: FETCH SETUP STATUS FROM DB
     if (pathname === '/setup' || pathname.startsWith('/setup/')) {
       const { data: tenantUser } = await supabase
         .from('tenant_users')
@@ -398,13 +400,12 @@ export async function middleware(request: NextRequest) {
           return NextResponse.redirect(new URL('/dashboard', request.url));
         }
       }
-      // Not completed - allow access to setup
       const response = NextResponse.next();
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, pathname);
     }
     
     // For all other protected paths (dashboard, orders, etc.)
-    console.log(`[MW-${requestId}] Checking setup status for protected path: ${pathname}`);
+    console.log(`[MW-${requestId}] Checking setup for: ${pathname}`);
     
     const { data: tenantUser, error: tenantError } = await supabase
       .from('tenant_users')
@@ -412,8 +413,8 @@ export async function middleware(request: NextRequest) {
       .eq('user_id', userId)
       .single();
     
-    console.log(`[MW-${requestId}] DB Tenant result:`, JSON.stringify({
-      tenantUser,
+    console.log(`[MW-${requestId}] DB Tenant:`, JSON.stringify({
+      tenant_id: tenantUser?.tenant_id,
       error: tenantError?.message
     }));
     
@@ -438,12 +439,11 @@ export async function middleware(request: NextRequest) {
       .eq('tenant_id', tenantUser.tenant_id)
       .single();
     
-    console.log(`[MW-${requestId}] DB Setup result:`, JSON.stringify({
-      setup,
+    console.log(`[MW-${requestId}] DB Setup:`, JSON.stringify({
+      setup_completed: setup?.setup_completed,
       error: setupError?.message
     }));
     
-    // STRICT CHECK - Only true if explicitly set to true in DB
     const dbSetupCompleted = setup?.setup_completed === true;
     
     if (!dbSetupCompleted) {
@@ -459,13 +459,15 @@ export async function middleware(request: NextRequest) {
             : 'No setup record in DB',
         source: 'DB_FETCH'
       });
-      console.log(`[MW-${requestId}] REDIRECT to /setup - setup not completed`);
-      return NextResponse.redirect(new URL('/setup', request.url));
+      console.log(`[MW-${requestId}] REDIRECT to /setup`);
+      const redirectResponse = NextResponse.redirect(new URL('/setup', request.url));
+      redirectResponse.headers.set('x-mw-hit', '1');
+      redirectResponse.headers.set('x-mw-version', MW_VERSION);
+      redirectResponse.headers.set('x-mw-redirect-reason', 'setup-not-completed');
+      return redirectResponse;
     }
     
-    // ============================================================
-    // STEP 3: ALL CHECKS PASSED - ALLOW ACCESS
-    // ============================================================
+    // ALL CHECKS PASSED - ALLOW ACCESS
     logJourneyDecision({
       user_id: userId,
       db_onboarding_completed: true,
@@ -477,18 +479,39 @@ export async function middleware(request: NextRequest) {
     console.log(`[MW-${requestId}] ACCESS GRANTED to ${pathname}`);
     
     const response = NextResponse.next();
-    return addSecurityHeaders(response);
+    return addSecurityHeaders(response, pathname);
   }
   
   // Default: allow with security headers
-  return addSecurityHeaders(NextResponse.next());
+  return addSecurityHeaders(NextResponse.next(), pathname);
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all paths except static files
-     */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/dashboard/:path*',
+    '/setup/:path*',
+    '/onboarding/:path*',
+    '/orders/:path*',
+    '/products/:path*',
+    '/inventory/:path*',
+    '/shipping/:path*',
+    '/finance/:path*',
+    '/profit/:path*',
+    '/campaigns/:path*',
+    '/ai-pipeline/:path*',
+    '/content-writer/:path*',
+    '/integrations/:path*',
+    '/wallet/:path*',
+    '/settings/:path*',
+    '/admin/:path*',
+    '/purchasing/:path*',
+    '/landing-pages/:path*',
+    '/audit-log/:path*',
+    '/payment-settings/:path*',
+    '/auth/:path*',
+    '/login',
+    '/brand/:path*',
+    '/api/:path*',
+    '/',
   ],
 };

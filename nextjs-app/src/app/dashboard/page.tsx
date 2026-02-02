@@ -536,6 +536,14 @@ export default function DashboardPage() {
           />
         </div>
       )}
+
+      {/* Production Proof: Build ID */}
+      <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-800">
+        <p className="text-xs text-gray-400 text-center">
+          Build: {process.env.NEXT_PUBLIC_BUILD_ID || 'dev-local'} | 
+          Version: v5-prod-2026-02-02
+        </p>
+      </div>
     </AppShell>
   );
 }

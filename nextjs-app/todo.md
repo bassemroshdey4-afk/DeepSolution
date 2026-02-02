@@ -425,3 +425,20 @@ Login → Onboarding (إذا لم يكتمل) → Setup (إذا لم يكتمل)
 ### Phase 4: Testing
 - [x] Build ناجح ✅
 - [x] اختبار Flow كامل
+
+
+## Production Proofs - Feb 2026
+
+### Proof 1: Middleware Header
+- [ ] إضافة x-mw-hit: 1 header على /dashboard|/setup|/onboarding
+- [ ] تأكيد ظهور Header في Production response
+
+### Proof 2: API Probe
+- [ ] إنشاء /api/__probe endpoint
+- [ ] إرجاع { vercelEnv, supabasePrefix, hasAnonKey, gitCommit }
+- [ ] تأكيد vercelEnv="production"
+
+### Proof 3: UI Build ID
+- [ ] إضافة NEXT_PUBLIC_BUILD_ID
+- [ ] عرضه في Dashboard
+- [ ] تأكيد ظهوره على deepsolution.vercel.app
