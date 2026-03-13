@@ -80,6 +80,8 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   const redirectTo = searchParams.get('redirect') || '/dashboard';
   const authError = searchParams.get('error');
@@ -103,6 +105,55 @@ function LoginContent() {
       setError(message);
     }
   }, [authError, errorMessage]);
+
+  const normalizeAuthError = (message: string) => {
+    const lower = message.toLowerCase();
+
+    if (
+      lower.includes('invalid login credentials') ||
+      lower.includes('email not confirmed') ||
+      lower.includes('invalid email or password')
+    ) {
+      return 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
+    }
+
+    return message;
+  };
+
+  const handleEmailPasswordLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!supabase) {
+      setError('نظام المصادقة غير مُعد. يرجى التواصل مع الدعم الفني.');
+      return;
+    }
+
+    if (!email.trim() || !password) {
+      setError('يرجى إدخال البريد الإلكتروني وكلمة المرور.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (signInError) {
+        throw signInError;
+      }
+
+      router.push(redirectTo);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'حدث خطأ أثناء تسجيل الدخول.';
+      setError(normalizeAuthError(errorMsg));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Handle Google OAuth login - ONLY triggered by button click
   const handleGoogleLogin = async () => {
@@ -242,6 +293,61 @@ function LoginContent() {
                 </div>
               </div>
             )}
+
+            <form onSubmit={handleEmailPasswordLogin} className="space-y-4 mb-6">
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm font-medium text-foreground">
+                  البريد الإلكتروني
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  dir="ltr"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  disabled={isLoading}
+                  required
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="password" className="text-sm font-medium text-foreground">
+                  كلمة المرور
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  dir="ltr"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  disabled={isLoading}
+                  required
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full h-10 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isLoading}
+              >
+                {isLoading ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول بالبريد الإلكتروني'}
+              </button>
+            </form>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">أو</span>
+              </div>
+            </div>
 
             {/* Google Login Button */}
             <button
